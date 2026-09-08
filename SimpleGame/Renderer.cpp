@@ -31,6 +31,16 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 	//Create VBOs
 	CreateVertexBufferObjects();
 
+	if (m_SolidRectShader > 0)
+	{
+		m_LocTrans = glGetUniformLocation(m_SolidRectShader, "u_Trans");
+		m_LocColor = glGetUniformLocation(m_SolidRectShader, "u_Color");
+		m_AttribPosition = glGetAttribLocation(m_SolidRectShader, "a_Position");
+	}
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 	if (m_SolidRectShader > 0 && m_VBORect > 0)
 	{
 		m_Initialized = true;
@@ -128,13 +138,13 @@ GLuint Renderer::CompileShaders(const char* filenameVS, const char* filenameFS)
 	//shader.vs 가 vs 안으로 로딩됨
 	if (!ReadFile(filenameVS, &vs)) {
 		printf("Error compiling vertex shader\n");
-		return -1;
+		return 0;
 	};
 
 	//shader.fs 가 fs 안으로 로딩됨
 	if (!ReadFile(filenameFS, &fs)) {
 		printf("Error compiling fragment shader\n");
-		return -1;
+		return 0;
 	};
 
 	// ShaderProgram 에 vs.c_str() 버텍스 쉐이더를 컴파일한 결과를 attach함
@@ -156,7 +166,7 @@ GLuint Renderer::CompileShaders(const char* filenameVS, const char* filenameFS)
 		// shader program 로그를 받아옴
 		glGetProgramInfoLog(ShaderProgram, sizeof(ErrorLog), NULL, ErrorLog);
 		std::cout << filenameVS << ", " << filenameFS << " Error linking shader program\n" << ErrorLog;
-		return -1;
+		return 0;
 	}
 
 	glValidateProgram(ShaderProgram);
@@ -164,11 +174,11 @@ GLuint Renderer::CompileShaders(const char* filenameVS, const char* filenameFS)
 	if (!Success) {
 		glGetProgramInfoLog(ShaderProgram, sizeof(ErrorLog), NULL, ErrorLog);
 		std::cout << filenameVS << ", " << filenameFS << " Error validating shader program\n" << ErrorLog;
-		return -1;
+		return 0;
 	}
 
 	glUseProgram(ShaderProgram);
-	std::cout << filenameVS << ", " << filenameFS << " Shader compiling is done.";
+	std::cout << filenameVS << ", " << filenameFS << " Shader compiling is done.\n";
 
 	return ShaderProgram;
 }
@@ -179,22 +189,18 @@ void Renderer::DrawSolidRect(float x, float y, float z, float size, float r, flo
 
 	GetGLPosition(x, y, &newX, &newY);
 
-	//Program select
 	glUseProgram(m_SolidRectShader);
 
-	glUniform4f(glGetUniformLocation(m_SolidRectShader, "u_Trans"), newX, newY, 0, size);
-	glUniform4f(glGetUniformLocation(m_SolidRectShader, "u_Color"), r, g, b, a);
+	glUniform4f(m_LocTrans, newX, newY, 0, size);
+	glUniform4f(m_LocColor, r, g, b, a);
 
-	int attribPosition = glGetAttribLocation(m_SolidRectShader, "a_Position");
-	glEnableVertexAttribArray(attribPosition);
+	glEnableVertexAttribArray(m_AttribPosition);
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBORect);
-	glVertexAttribPointer(attribPosition, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
+	glVertexAttribPointer(m_AttribPosition, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
 
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
-	glDisableVertexAttribArray(attribPosition);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glDisableVertexAttribArray(m_AttribPosition);
 }
 
 void Renderer::GetGLPosition(float x, float y, float *newX, float *newY)

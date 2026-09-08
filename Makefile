@@ -14,7 +14,7 @@ SRC_DIR  := SimpleGame
 BUILD    := build
 TARGET   := $(BUILD)/SimpleGame
 
-SOURCES  := $(SRC_DIR)/SimpleGame.cpp $(SRC_DIR)/Renderer.cpp $(SRC_DIR)/stdafx.cpp
+SOURCES  := $(wildcard $(SRC_DIR)/*.cpp)
 OBJECTS  := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD)/%.o,$(SOURCES))
 DEPS     := $(OBJECTS:.o=.d)
 
@@ -28,7 +28,7 @@ else
   CXXFLAGS += -g -O0
 endif
 
-.PHONY: all run release clean
+.PHONY: all run release shot clean
 
 all: $(TARGET) $(BUILD)/Shaders
 
@@ -50,6 +50,12 @@ $(BUILD):
 
 run: all
 	cd $(BUILD) && ./SimpleGame
+
+# 개발용 캡처: 정해진 경로를 걸어다닌 뒤 프레임버퍼를 저장하고 종료한다.
+# 화면 기록 권한 없이 렌더링 결과를 확인할 수 있다.
+shot: all
+	cd $(BUILD) && ./SimpleGame --shot shot.ppm
+	python3 tools/ppm2png.py $(BUILD)/shot.ppm $(BUILD)/shot.png
 
 release:
 	@$(MAKE) CONFIG=release

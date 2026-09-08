@@ -32,5 +32,11 @@ private:
 	GLuint m_VAO = 0;
 	GLuint m_VBORect = 0;
 	GLuint m_SolidRectShader = 0;
+
+	// 밝기 격자를 매 프레임 수천 칸 그리므로, 이름으로 하는 위치 조회는
+	// 초기화 때 한 번만 하고 캐시해 둔다.
+	GLint m_LocTrans = -1;
+	GLint m_LocColor = -1;
+	GLint m_AttribPosition = -1;
 };
 
