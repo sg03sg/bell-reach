@@ -1,0 +1,26 @@
+# ── 빌드 산출물 ────────────────────────────
+/build/
+/SimpleGame/x64/
+/SimpleGame/Debug/
+/SimpleGame/Release/
+*.o
+*.d
+*.obj
+*.exe
+*.ilk
+*.pdb
+*.pch
+*.idb
+*.tlog
+*.log
+*.lastbuildstate
+*.recipe
+
+# ── Visual Studio 사용자 설정 ──────────────
+.vs/
+*.suo
+*.user
+*.db
+
+# ── macOS ──────────────────────────────────
+.DS_Store

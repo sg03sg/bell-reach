@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# SimpleGame - macOS build
+#
+#   make          build (Debug)
+#   make run      build + run
+#   make release  optimized build
+#   make clean    remove build output
+#
+# Uses only the system OpenGL and GLUT frameworks - nothing to install.
+# ---------------------------------------------------------------------------
+
+CXX      := clang++
+SRC_DIR  := SimpleGame
+BUILD    := build
+TARGET   := $(BUILD)/SimpleGame
+
+SOURCES  := $(SRC_DIR)/SimpleGame.cpp $(SRC_DIR)/Renderer.cpp $(SRC_DIR)/stdafx.cpp
+OBJECTS  := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD)/%.o,$(SOURCES))
+DEPS     := $(OBJECTS:.o=.d)
+
+CXXFLAGS := -std=c++17 -I$(SRC_DIR) -Wall -Wno-deprecated-declarations -MMD -MP
+LDFLAGS  := -framework OpenGL -framework GLUT
+
+CONFIG   ?= debug
+ifeq ($(CONFIG),release)
+  CXXFLAGS += -O2 -DNDEBUG
+else
+  CXXFLAGS += -g -O0
+endif
+
+.PHONY: all run release clean
+
+all: $(TARGET) $(BUILD)/Shaders
+
+$(TARGET): $(OBJECTS)
+	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
+
+$(BUILD)/%.o: $(SRC_DIR)/%.cpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# The program loads shaders from ./Shaders, so mirror them next to the binary.
+$(BUILD)/Shaders: $(wildcard $(SRC_DIR)/Shaders/*)
+	@mkdir -p $(BUILD)
+	@rm -rf $(BUILD)/Shaders
+	@cp -R $(SRC_DIR)/Shaders $(BUILD)/Shaders
+	@touch $(BUILD)/Shaders
+
+$(BUILD):
+	@mkdir -p $(BUILD)
+
+run: all
+	cd $(BUILD) && ./SimpleGame
+
+release:
+	@$(MAKE) CONFIG=release
+
+clean:
+	rm -rf $(BUILD)
+
+-include $(DEPS)

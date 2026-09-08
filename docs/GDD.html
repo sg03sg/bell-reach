@@ -1,0 +1,1006 @@
+<title>종소리가 닿는 곳까지</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ── 어둠이 기본값. 빛은 예외로 정의된다 ───────────────────────── */
+:root{
+  --ground:#0F1217;
+  --surface:#171B22;
+  --surface-2:#1E232B;
+  --well:#0A0C10;
+  --line:#2A303A;
+  --line-soft:#20262E;
+
+  --text:#E3DED2;
+  --text-dim:#A8ADB5;
+  --text-faint:#7B818A;
+
+  --flame:#D2924A;
+  --flame-soft:#8A6434;
+  --verdigris:#6E9184;
+  --rust:#B0553E;
+
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 8px 24px -16px rgba(0,0,0,.8);
+
+  --serif:"Gowun Batang", "Nanum Myeongjo", "Apple SD Gothic Neo", serif;
+  --sans:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --measure:68ch;
+}
+
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --ground:#F2EFE8;
+    --surface:#FBF9F4;
+    --surface-2:#EDE9E0;
+    --well:#E4DFD4;
+    --line:#D5CFC2;
+    --line-soft:#E2DCD0;
+
+    --text:#1B1F26;
+    --text-dim:#4E545D;
+    --text-faint:#787E88;
+
+    --flame:#A2652A;
+    --flame-soft:#D9B583;
+    --verdigris:#3F6558;
+    --rust:#93402C;
+
+    --shadow:0 1px 0 rgba(255,255,255,.7), 0 8px 20px -16px rgba(60,50,35,.5);
+  }
+}
+
+:root[data-theme="light"]{
+  --ground:#F2EFE8;
+  --surface:#FBF9F4;
+  --surface-2:#EDE9E0;
+  --well:#E4DFD4;
+  --line:#D5CFC2;
+  --line-soft:#E2DCD0;
+
+  --text:#1B1F26;
+  --text-dim:#4E545D;
+  --text-faint:#787E88;
+
+  --flame:#A2652A;
+  --flame-soft:#D9B583;
+  --verdigris:#3F6558;
+  --rust:#93402C;
+
+  --shadow:0 1px 0 rgba(255,255,255,.7), 0 8px 20px -16px rgba(60,50,35,.5);
+}
+
+*{box-sizing:border-box}
+
+body{
+  background:var(--ground);
+  color:var(--text);
+  font-family:var(--sans);
+  font-weight:300;
+  font-size:16px;
+  line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── 골격 ───────────────────────────────────────────────── */
+.shell{max-width:1180px;margin:0 auto;padding:0 24px 120px}
+
+.layout{display:grid;grid-template-columns:1fr;gap:0}
+@media (min-width:1040px){
+  .layout{grid-template-columns:210px minmax(0,1fr);gap:56px;align-items:start}
+}
+
+/* ── 표제 ───────────────────────────────────────────────── */
+.masthead{
+  position:relative;
+  margin:0 -24px 56px;
+  padding:76px 24px 44px;
+  background:var(--well);
+  border-bottom:1px solid var(--line);
+  overflow:hidden;
+}
+.masthead::before{
+  content:"";
+  position:absolute;
+  left:50%;top:-90px;
+  width:620px;height:340px;
+  transform:translateX(-50%);
+  background:radial-gradient(ellipse at center, color-mix(in srgb, var(--flame) 26%, transparent) 0%, transparent 68%);
+  pointer-events:none;
+}
+.masthead-inner{position:relative;max-width:1180px;margin:0 auto}
+
+.eyebrow{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--flame);
+  margin:0 0 20px;
+}
+h1{
+  font-family:var(--serif);
+  font-weight:700;
+  font-size:clamp(2.3rem,5.4vw,3.6rem);
+  line-height:1.15;
+  letter-spacing:-.01em;
+  margin:0 0 18px;
+  text-wrap:balance;
+}
+.logline{
+  font-family:var(--serif);
+  font-size:clamp(1.05rem,2.1vw,1.3rem);
+  line-height:1.7;
+  color:var(--text-dim);
+  max-width:44ch;
+  margin:0 0 34px;
+}
+.logline em{color:var(--text);font-style:normal}
+
+.meta{
+  display:flex;flex-wrap:wrap;gap:0 34px;
+  font-family:var(--mono);font-size:12px;
+  border-top:1px solid var(--line);
+  padding-top:20px;
+}
+.meta div{display:flex;flex-direction:column;gap:2px;padding:6px 0}
+.meta dt{color:var(--text-faint);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+.meta dd{margin:0;color:var(--text-dim)}
+
+/* ── 차례 ───────────────────────────────────────────────── */
+.rail{display:none}
+@media (min-width:1040px){
+  .rail{
+    display:block;position:sticky;top:28px;
+    font-family:var(--mono);font-size:12px;
+    border-left:1px solid var(--line);
+    padding-left:16px;
+  }
+  .rail a{
+    display:block;padding:5px 0;
+    color:var(--text-faint);text-decoration:none;
+    border-left:2px solid transparent;margin-left:-18px;padding-left:16px;
+    transition:color .15s, border-color .15s;
+  }
+  .rail a:hover,.rail a:focus-visible{color:var(--flame);border-left-color:var(--flame)}
+  .rail .num{color:var(--line);margin-right:8px}
+  .rail a:hover .num{color:var(--flame-soft)}
+}
+
+/* ── 절 ─────────────────────────────────────────────────── */
+section{margin:0 0 76px;scroll-margin-top:24px}
+
+.sec-head{
+  display:flex;align-items:baseline;gap:14px;
+  border-bottom:1px solid var(--line);
+  padding-bottom:12px;margin-bottom:28px;
+}
+.sec-num{
+  font-family:var(--mono);font-size:12px;font-weight:500;
+  color:var(--flame);letter-spacing:.1em;
+}
+h2{
+  font-family:var(--serif);font-weight:700;
+  font-size:clamp(1.5rem,3vw,1.95rem);
+  line-height:1.3;margin:0;text-wrap:balance;
+}
+h3{
+  font-family:var(--sans);font-weight:600;font-size:1.02rem;
+  letter-spacing:.01em;
+  margin:40px 0 12px;color:var(--text);
+}
+h4{
+  font-family:var(--mono);font-weight:500;font-size:11px;
+  letter-spacing:.16em;text-transform:uppercase;
+  color:var(--text-faint);margin:32px 0 10px;
+}
+p{margin:0 0 16px;max-width:var(--measure)}
+strong{font-weight:600;color:var(--text)}
+a{color:var(--flame)}
+
+ul,ol{margin:0 0 16px;padding-left:1.15em;max-width:var(--measure)}
+li{margin:0 0 7px}
+li::marker{color:var(--text-faint)}
+
+.lead{
+  font-family:var(--serif);font-size:1.12rem;line-height:1.8;
+  color:var(--text-dim);max-width:58ch;
+}
+
+/* ── 주제문 ─────────────────────────────────────────────── */
+.thesis{
+  font-family:var(--serif);
+  font-size:clamp(1.25rem,2.8vw,1.65rem);
+  line-height:1.6;
+  color:var(--text);
+  border-left:2px solid var(--flame);
+  padding:6px 0 6px 26px;
+  margin:0 0 36px;
+  max-width:40ch;
+  text-wrap:balance;
+}
+
+/* ── 표 ─────────────────────────────────────────────────── */
+.scroller{overflow-x:auto;margin:0 0 22px;border:1px solid var(--line);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+th{
+  font-family:var(--mono);font-weight:500;font-size:10.5px;
+  letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-faint);text-align:left;
+  padding:12px 16px;border-bottom:1px solid var(--line);
+  background:var(--surface-2);white-space:nowrap;
+}
+td{
+  padding:13px 16px;border-bottom:1px solid var(--line-soft);
+  vertical-align:top;color:var(--text-dim);line-height:1.6;
+}
+tr:last-child td{border-bottom:none}
+td strong{color:var(--text)}
+
+/* 규칙 ↔ 의미: 좌측은 시스템, 우측은 뜻 */
+.meaning td:first-child{
+  font-family:var(--mono);font-size:12.5px;line-height:1.65;
+  color:var(--text);width:44%;
+}
+.meaning td:last-child{
+  font-family:var(--serif);font-size:15px;color:var(--text-dim);
+}
+
+/* ── 배지 ───────────────────────────────────────────────── */
+.tag{
+  display:inline-block;font-family:var(--mono);font-size:10px;
+  letter-spacing:.1em;padding:2px 7px;border:1px solid var(--line);
+  color:var(--text-faint);white-space:nowrap;
+}
+.p0{color:var(--rust);border-color:color-mix(in srgb,var(--rust) 45%,transparent)}
+.p1{color:var(--flame);border-color:color-mix(in srgb,var(--flame) 45%,transparent)}
+.p2{color:var(--verdigris);border-color:color-mix(in srgb,var(--verdigris) 45%,transparent)}
+.done{color:var(--verdigris);border-color:color-mix(in srgb,var(--verdigris) 45%,transparent)}
+.open{color:var(--text-faint)}
+
+/* ── 카드 묶음 ──────────────────────────────────────────── */
+.grid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin:0 0 22px}
+@media (min-width:680px){ .grid.c3{grid-template-columns:repeat(3,1fr)} .grid.c2{grid-template-columns:repeat(2,1fr)} }
+.cell{background:var(--surface);padding:20px 20px 22px}
+.cell h5{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--flame);margin:0 0 10px;font-weight:500;
+}
+.cell p{margin:0;font-size:14px;line-height:1.7;color:var(--text-dim);max-width:none}
+.cell .figure{
+  font-family:var(--mono);font-size:1.5rem;color:var(--text);
+  display:block;margin:0 0 6px;font-variant-numeric:tabular-nums;
+}
+
+/* ── 진행 순서 ──────────────────────────────────────────── */
+.loop{list-style:none;padding:0;margin:0 0 22px;max-width:var(--measure);
+  border-top:1px solid var(--line-soft)}
+.loop li{
+  display:grid;grid-template-columns:34px 1fr;gap:14px;
+  padding:13px 0;margin:0;border-bottom:1px solid var(--line-soft);
+}
+.loop .step{
+  font-family:var(--mono);font-size:11px;color:var(--flame);
+  padding-top:5px;letter-spacing:.08em;
+}
+.loop b{display:block;font-weight:600;color:var(--text);font-size:14.5px}
+.loop span.note{display:block;font-size:13.5px;color:var(--text-faint);line-height:1.65}
+.loop li.peak b{color:var(--flame)}
+
+/* ── 정서 곡선 ──────────────────────────────────────────── */
+.arc{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin:0 0 22px}
+@media (min-width:760px){ .arc{grid-template-columns:repeat(6,1fr)} }
+.arc div{background:var(--surface);padding:14px 14px 16px}
+.arc dt{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--text-faint);margin:0 0 5px}
+.arc dd{margin:0;font-family:var(--serif);font-size:14px;color:var(--text-dim);line-height:1.5}
+.arc div.bright{background:var(--surface-2)}
+.arc div.bright dd{color:var(--flame)}
+
+/* ── 경고 / 참고 블록 ───────────────────────────────────── */
+.note-box{
+  border:1px solid var(--line);border-left:2px solid var(--verdigris);
+  background:var(--surface);padding:18px 20px;margin:0 0 22px;max-width:var(--measure);
+}
+.note-box.warn{border-left-color:var(--rust)}
+.note-box h5{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--verdigris);margin:0 0 8px;font-weight:500;
+}
+.note-box.warn h5{color:var(--rust)}
+.note-box p{margin:0 0 10px;font-size:14px;color:var(--text-dim)}
+.note-box p:last-child{margin:0}
+.note-box ul{margin:0;font-size:14px;color:var(--text-dim)}
+
+/* ── 코드 ───────────────────────────────────────────────── */
+pre{
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;
+  background:var(--well);border:1px solid var(--line);
+  padding:16px 18px;margin:0 0 22px;overflow-x:auto;color:var(--text-dim);
+}
+pre b{color:var(--flame);font-weight:400}
+pre i{color:var(--text-faint);font-style:normal}
+code{font-family:var(--mono);font-size:.9em;color:var(--text)}
+p code,li code,td code{
+  background:var(--surface-2);padding:1px 5px;border:1px solid var(--line-soft);
+}
+
+/* ── 마감 ───────────────────────────────────────────────── */
+.colophon{
+  margin-top:76px;padding-top:22px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:11.5px;color:var(--text-faint);
+  display:flex;flex-wrap:wrap;gap:8px 28px;
+}
+
+:focus-visible{outline:2px solid var(--flame);outline-offset:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <p class="eyebrow">게임 기획서 초안 · v0.1</p>
+    <h1>종소리가 닿는 곳까지</h1>
+    <p class="logline">어둠에 잠긴 섬. 구역마다 침묵한 종탑과 그곳에 굳어버린 사람이 하나씩 있다. 등불을 들고 그를 깨워, 함께 종을 울린다. <em>큰 종은 혼자 울릴 수 없다.</em></p>
+    <dl class="meta">
+      <div><dt>장르</dt><dd>2.5D 액션 RPG</dd></div>
+      <div><dt>배경</dt><dd>중세 · 역병 이후</dd></div>
+      <div><dt>플랫폼</dt><dd>Windows / macOS</dd></div>
+      <div><dt>엔진</dt><dd>자체 · OpenGL 3.3 Core</dd></div>
+      <div><dt>개발 규모</dt><dd>1인 개발</dd></div>
+      <div><dt>개발 기간</dt><dd>한 학기 → 이후 계속</dd></div>
+      <div><dt>문서 상태</dt><dd>초안 — 전투 미확정</dd></div>
+      <div><dt>작성</dt><dd>2026.09.08</dd></div>
+    </dl>
+  </div>
+</header>
+
+<div class="shell">
+<div class="layout">
+
+  <nav class="rail" aria-label="차례">
+    <a href="#s1"><span class="num">01</span>개요</a>
+    <a href="#s2"><span class="num">02</span>의미</a>
+    <a href="#s3"><span class="num">03</span>세계관</a>
+    <a href="#s4"><span class="num">04</span>게임플레이</a>
+    <a href="#s5"><span class="num">05</span>빛</a>
+    <a href="#s6"><span class="num">06</span>동행자</a>
+    <a href="#s7"><span class="num">07</span>어둠</a>
+    <a href="#s8"><span class="num">08</span>콘텐츠 규모</a>
+    <a href="#s9"><span class="num">09</span>기술 사항</a>
+    <a href="#s10"><span class="num">10</span>로드맵</a>
+    <a href="#s11"><span class="num">11</span>미결</a>
+  </nav>
+
+  <main>
+
+  <!-- 01 ───────────────────────────────────────────────── -->
+  <section id="s1">
+    <div class="sec-head"><span class="sec-num">01</span><h2>개요</h2></div>
+
+    <p class="lead">플레이어는 종지기 견습이다. 영웅이 아니라 기능공이고, 할 줄 아는 것은 종을 다루는 일 하나뿐이다. 이 게임에서는 그것이 유일하게 특별한 능력이 된다.</p>
+
+    <h3>핵심 킥</h3>
+    <div class="thesis">큰 종은 혼자 울릴 수 없다.</div>
+    <p>중세 유럽에서 교구의 경계는 <strong>종소리가 들리는 범위</strong>였다. 종소리 안에 산다는 것은 문명 안에 산다는 뜻이었다. 이 게임은 그 사실을 그대로 규칙으로 쓴다. 그리고 실제로 큰 종은 혼자 못 울린다 — 무게가 톤 단위라 여러 명이 밧줄을 잡고 리듬을 맞춰야 소리가 난다. 혼자 매달리면 종이 흔들리기만 하고 종신에 닿지 않는다.</p>
+    <p>따라서 플레이어는 종탑에 도착해도 <strong>혼자서는 아무것도 할 수 없다.</strong> 그 구역에 갇힌 사람을 찾아 깨우고, 함께 밧줄을 당겨야 한다. 주제가 설정 문서에 적힌 문장이 아니라 플레이어가 손으로 겪는 물리 법칙이 된다.</p>
+
+    <h3>한 줄 요약</h3>
+    <div class="grid c3">
+      <div class="cell"><h5>무엇을 하나</h5><p>어둠 속 폐허를 등불 하나로 수색해, 굳어버린 사람을 찾아 깨운다.</p></div>
+      <div class="cell"><h5>왜 하나</h5><p>그와 함께 종을 울려야 구역이 밝아지고, 밝아진 만큼 더 멀리 갈 수 있다.</p></div>
+      <div class="cell"><h5>무엇이 막나</h5><p>등불의 기름은 줄고, 지나온 길은 꺼지고, 깨운 사람은 다시 굳어간다.</p></div>
+    </div>
+  </section>
+
+  <!-- 02 ───────────────────────────────────────────────── -->
+  <section id="s2">
+    <div class="sec-head"><span class="sec-num">02</span><h2>이 게임이 가지는 의미</h2></div>
+
+    <p class="lead">이 게임은 “혼자서는 안 된다”는 명제를 대사로 말하지 않고 규칙으로 증명한다. 아래 표의 왼쪽은 전부 실제로 구현될 시스템이고, 오른쪽은 그 시스템이 플레이어에게 시키는 경험이다. 주제가 먼저 있고 시스템을 붙인 것이 아니라, 시스템이 먼저 서고 그것이 뜻을 갖게 된 구조다.</p>
+
+    <h4>규칙 ↔ 의미</h4>
+    <div class="scroller">
+      <table class="meaning">
+        <thead><tr><th>게임의 규칙</th><th>그것이 뜻하는 바</th></tr></thead>
+        <tbody>
+          <tr><td>큰 종은 혼자 울릴 수 없다</td><td>연대는 미덕이 아니라 물리적 조건이다</td></tr>
+          <tr><td>등불의 기름은 유한하고 계속 줄어든다</td><td>희망은 자원이며, 관리하지 않으면 꺼진다</td></tr>
+          <tr><td>지나온 길은 잠시만 밝다</td><td>돌아갈 수 있는 시간은 영원하지 않다</td></tr>
+          <tr><td>깨운 사람도 어둠에 오래 두면 다시 굳는다</td><td>구조는 한 번의 사건이 아니라 지속되는 돌봄이다</td></tr>
+          <tr><td>몬스터는 늦게 도착한 자리에 있던 사람들이다</td><td>방치의 대가는 타인의 소멸이다</td></tr>
+          <tr><td>구역은 한 번에 하나씩만 밝아진다</td><td>세계는 한꺼번에 구원되지 않는다</td></tr>
+          <tr><td>까마귀는 적이 아니라 경고였다</td><td>불길하게 들리던 것이 실은 나를 지키고 있었다</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>정서 곡선 — 한 구역에서 플레이어가 겪는 것</h3>
+    <dl class="arc">
+      <div><dt>진입</dt><dd>고립</dd></div>
+      <div><dt>수색</dt><dd>불안</dd></div>
+      <div class="bright"><dt>발견</dt><dd>안도</dd></div>
+      <div><dt>동행</dt><dd>온기</dd></div>
+      <div><dt>이동</dt><dd>상실의 두려움</dd></div>
+      <div class="bright"><dt>타종</dt><dd>해방</dd></div>
+    </dl>
+    <p>밝은 칸이 두 개뿐인 것이 의도다. 게임의 대부분은 어둡고 조용하며, <strong>밝은 순간이 드물어야 밝게 느껴진다.</strong> “암울하지만 가끔 희망을 얻을 수 있는 사회”라는 톤은 분위기가 아니라 이 배분에서 나온다.</p>
+
+    <h3>왜 이 이야기인가</h3>
+    <p>재난 이후의 공동체를 다루는 이야기는 보통 둘 중 하나로 간다. 혼자 강해져서 살아남거나, 사람이 사람에게 늑대가 되거나. 이 게임은 세 번째를 택한다. <strong>혼자서는 물리적으로 불가능하기 때문에 사람을 찾아야 하는 세계</strong>다. 선의가 아니라 구조가 협력을 강제한다.</p>
+    <p>동시에 그 협력에는 값이 붙는다. 사람을 데리고 다니면 느려지고, 그를 밝은 곳에 두려면 자원을 써야 하고, 어떤 형상은 이미 늦어서 깨어나지 않는다. 구원이 공짜가 아니라 <strong>매번 계산해서 치러야 하는 비용</strong>일 때, 그럼에도 치르기로 하는 선택이 의미를 갖는다.</p>
+  </section>
+
+  <!-- 03 ───────────────────────────────────────────────── -->
+  <section id="s3">
+    <div class="sec-head"><span class="sec-num">03</span><h2>세계관과 스토리</h2></div>
+
+    <h3>배경</h3>
+    <p>역병이 섬을 훑고 지나간 뒤, 어둠이 내려앉았다. 그것은 밤이 아니다. 밤은 지나가지만 이 어둠은 머무른다. 어둠 속에 오래 남겨진 사람은 검게 굳어 그 자리에 멈춘다. 더 오래 남겨지면 <strong>완전히 삼켜져 형체만 사람인 것</strong>이 되어 걸어 다닌다.</p>
+    <p>섬의 각 마을에는 수도원이 세운 종탑이 하나씩 있다. 종이 울리는 동안 그 구역은 밝다. 지금은 모두 침묵해 있고, 종탑 꼭대기에는 까마귀들이 앉아 있다.</p>
+
+    <div class="note-box">
+      <h5>몬스터 = 늦게 도착한 사람들</h5>
+      <p>몬스터를 별도의 종족으로 설계하지 않는다. 전부 원래 이 섬의 주민이었고, 어둠에 완전히 삼켜진 자들이다. 이 설정 하나로 세 가지가 동시에 풀린다 — 몬스터 디자인의 근거(사람 형체를 한 검은 것들), 세계의 암울함(설정이 아니라 사실), 그리고 종을 울리는 행위의 성격(정복이 아니라 구조).</p>
+      <p>후반에 <strong>“말을 걸어도 깨어나지 않는 형상”</strong> 하나만 배치하면 플레이어가 알아서 이해한다. 설명 대사는 필요 없다.</p>
+    </div>
+
+    <h3>3막 구성</h3>
+    <ol class="loop">
+      <li><span class="step">1막</span><span><b>혼자</b><span class="note">수도원에서 눈을 뜬다. 종탑은 무너졌고 종에는 금이 갔다. 밝은 곳은 광장뿐. 금 간 종을 울릴 수 있게 만드는 과정에서 첫 동료(대장장이)를 만난다. 킥의 소개이자 튜토리얼.</span></span></li>
+      <li><span class="step">2막</span><span><b>모으기</b><span class="note">구역이 하나씩 열린다. 폐광, 늪지, 무너진 성채, 해안 절벽. 동료가 늘수록 여정이 쉬워진다. 동시에 어두운 선택지들이 등장한다 — 식량이 부족한데 더 받을 것인가, 감염 의심자를 들일 것인가, 어떤 동료의 과거를 다른 동료가 알아본다.</span></span></li>
+      <li><span class="step">3막</span><span><b>까마귀</b><span class="note">까마귀는 어둠의 하수인이 아니라, 어둠이 오는 것을 <strong>알리려 울던</strong> 존재였다. 게임 내내 가장 불길하게 들린 소리가 사실은 경고이자 도움이었다. 세계를 다시 보게 만들되, 지금까지 플레이어가 한 일을 부정하지 않는 반전.</span></span></li>
+    </ol>
+
+    <h4>결말 후보</h4>
+    <ul>
+      <li><strong>침묵</strong> — 종을 영원히 멈춘다. 사람들은 흩어지지만 어둠도 물러난다. 안전한 고립.</li>
+      <li><strong>타종</strong> — 끝까지 울린다. 모두를 불러 모아 최후의 방어전. 위험한 연대.</li>
+    </ul>
+    <p>어느 쪽도 옳지 않게, 둘 다 대가가 보이게 설계한다. <span class="tag open">미확정</span></p>
+  </section>
+
+  <!-- 04 ───────────────────────────────────────────────── -->
+  <section id="s4">
+    <div class="sec-head"><span class="sec-num">04</span><h2>게임플레이</h2></div>
+
+    <h3>전체 루프</h3>
+    <pre><i>┌────────────────────────────────────────────────┐</i>
+<i>│</i>  <b>준비</b>     구조한 동료의 상시 효과 적용        <i>│</i>
+<i>│</i>            등불 기름 · 화톳불 2~3개 소지        <i>│</i>
+<i>│</i>              ↓                                 <i>│</i>
+<i>│</i>  <b>수색</b>     어둠 속 폐허 마을. 집집마다 등불     <i>│</i>
+<i>│</i>              ↓                                 <i>│</i>
+<i>│</i>  <b>발견</b>     검은 형상에게 말을 건다  ★           <i>│</i>
+<i>│</i>            종탑 위치가 지도에 찍힌다             <i>│</i>
+<i>│</i>              ↓                                 <i>│</i>
+<i>│</i>  <b>동행</b>     함께 어둠을 가로지르고 함께 싸운다   <i>│</i>
+<i>│</i>              ↓                                 <i>│</i>
+<i>│</i>  <b>타종</b>     둘이 밧줄을 당긴다. 어둠이 몰려온다  <i>│</i>
+<i>│</i>              ↓                                 <i>│</i>
+<i>│</i>  <b>점등</b>     구역이 밝아진다. 내 땅이 된다        <i>│</i>
+<i>└──────────────────→ 새 구역 개방 ───────────────┘</i></pre>
+
+    <h3>구역 하나 = 2막 구조</h3>
+    <p>한 구역이 성격이 다른 두 덩어리로 갈린다. 같은 긴장이 30분 이어지면 지루해지는데, 결이 바뀌면 지루할 틈이 없다.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th></th><th>1막 · 수색</th><th>2막 · 이동</th></tr></thead>
+        <tbody>
+          <tr><td><strong>목표</strong></td><td>불명 — 어디 있는지 모름</td><td>명확 — 종탑 표식</td></tr>
+          <tr><td><strong>긴장</strong></td><td>미지의 공포, 정적</td><td>쫓기는 압박, 소음</td></tr>
+          <tr><td><strong>동행</strong></td><td>혼자</td><td>동료와 함께</td></tr>
+          <tr><td><strong>속도</strong></td><td>느리게, 조심스럽게</td><td>빠르게, 밀어붙이며</td></tr>
+          <tr><td><strong>발자국</strong></td><td>어디를 봤는지 표시</td><td>꺼져가는 퇴로</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>1막 — 등불을 들고 집집마다</h3>
+    <p>폐허가 된 마을. 집이 8~12채. 문을 열고 등불을 비춰본다. 나오는 것은:</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>비중</th><th>내용</th><th>역할</th></tr></thead>
+        <tbody>
+          <tr><td>대부분</td><td>비어 있음 — 뒤엎어진 세간, 식은 화로</td><td>정적, 낭비되는 시간의 압박</td></tr>
+          <tr><td>몇 곳</td><td>아이템 — 기름, 화톳불, 회복약</td><td>수색의 보상</td></tr>
+          <tr><td>몇 곳</td><td>단서 — 시체, 일기, 벽에 긁힌 글씨</td><td>스토리 전달 + <strong>수색 범위 좁히기</strong></td></tr>
+          <tr><td>한두 곳</td><td>몬스터</td><td>문을 여는 행위를 도박으로</td></tr>
+          <tr><td>한 곳</td><td>굳어버린 검은 형상</td><td>목표</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>단서가 있어야 무작위 노가다가 되지 않는다.</strong> “방앗간 쪽에서 소리가 났다”, “지하실 문이 안에서 잠겨 있었다” 같은 메모로 후보를 3~4채까지 좁혀준다. 플레이어가 추리 끝에 찾았다고 느껴야 한다.</p>
+
+    <h3>2막 — 이벤트 설계 원칙</h3>
+    <div class="thesis" style="font-size:1.15rem">모든 이벤트는 해법이 2~3개. 그중 하나가 특정 동료의 능력.</div>
+    <p>동료가 없으면 못 지나가게 만들면 <strong>하드 게이트</strong>가 되어 진행이 막힌다. 동료를 모을수록 여정이 <em>쉬워져야지</em>, 비로소 <em>가능해지면</em> 안 된다.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>이벤트</th><th>① 동료 해법</th><th>② 자원 해법</th><th>③ 위험 감수</th></tr></thead>
+        <tbody>
+          <tr><td><strong>무너진 다리</strong></td><td>대장장이가 수리</td><td>목재 소모</td><td>협곡 우회 (몬스터 밀집)</td></tr>
+          <tr><td><strong>막힌 갱도</strong></td><td>광부가 뚫음</td><td>화약 소모</td><td>긴 우회로 (기름 대량 소모)</td></tr>
+          <tr><td><strong>독 안개</strong></td><td>약초꾼이 해독</td><td>해독초 소모</td><td>체력 깎이며 강행</td></tr>
+          <tr><td><strong>잠긴 종탑 문</strong></td><td>수도승이 열쇠 위치를 앎</td><td>—</td><td>어둠 속 열쇠 탐색</td></tr>
+          <tr><td><strong>굶주린 무리</strong></td><td>사냥꾼이 식량 제공 → 합류</td><td>내 식량을 나눔</td><td>뿌리침 (나중에 적대)</td></tr>
+          <tr><td><strong>어둠 속 제단</strong></td><td>수도승이 정화 → 축복</td><td>—</td><td>제물을 바치고 강한 보상</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>“굶주린 무리”처럼 <strong>정답이 없고 양쪽 다 대가가 있는</strong> 선택지를 구역마다 한둘씩 섞는다. 이것이 이 게임 톤의 실제 질감이다.</p>
+
+    <h3>타종전 — 매 구역의 클라이맥스</h3>
+    <p>종은 한 번에 울리지 않는다. 여러 번 당겨 진폭을 키워야 한다.</p>
+    <ul>
+      <li>동료가 밧줄을 당기기 시작 → <strong>진행 게이지</strong></li>
+      <li>종이 조금씩 흔들리며 소리가 커진다 (댕… 댕‥)</li>
+      <li>동시에 까마귀가 미친 듯이 울고 어둠에서 몬스터가 몰려온다</li>
+      <li>게이지 완성 → 종이 제대로 울린다 → 빛이 파도처럼 퍼지고 몬스터가 소멸</li>
+    </ul>
+    <p>구현상 이것은 <strong>타이머 + 웨이브 스폰 + 승리 조건</strong>이 전부다. 고유 보스를 구역 수만큼 만들지 않고도 모든 구역에 클라이맥스가 생긴다. 한 학기 규모에서 이 이점은 매우 크다.</p>
+  </section>
+
+  <!-- 05 ───────────────────────────────────────────────── -->
+  <section id="s5">
+    <div class="sec-head"><span class="sec-num">05</span><h2>빛 — 이 게임의 화폐</h2></div>
+
+    <p class="lead">불은 이 세계의 중심 자원이다. 한 종류로는 부족하다. 세 단계로 나누면 그것이 곧 게임의 페이싱이 된다.</p>
+
+    <div class="scroller">
+      <table>
+        <thead><tr><th></th><th>범위</th><th>지속</th><th>역할</th></tr></thead>
+        <tbody>
+          <tr><td><strong>등불</strong> (휴대)</td><td>좁음</td><td>기름 소모, 유한</td><td>이동과 <strong>탐지</strong>. 시간 압박</td></tr>
+          <tr><td><strong>화톳불</strong> (설치 아이템)</td><td>중간</td><td>여정 동안 고정</td><td>거점 · 회복 · 동료 진정</td></tr>
+          <tr><td><strong>종탑</strong> (점등)</td><td>구역 전체</td><td>영구</td><td>영토 확보</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>등불 발자국 — 꺼져가는 퇴로</h3>
+    <p>플레이어가 지나간 곳은 <strong>잠시 동안만</strong> 밝게 남았다가 서서히 꺼진다. 규칙 하나가 여러 긴장을 동시에 만든다.</p>
+    <ul>
+      <li><strong>도망이 유효한 선택지가 된다.</strong> 왔던 길은 아직 밝아 몬스터가 들어오지 못한다 — 단, 시간이 있을 때만</li>
+      <li><strong>깊이 들어갈수록 자동으로 조여온다.</strong> 별도 UI 없이, 뒤를 돌아보면 압박이 눈에 보인다</li>
+      <li><strong>길을 잃지 않는다.</strong> 밝은 쪽이 곧 왔던 길이다</li>
+      <li><strong>머무를수록 손해다.</strong> 한자리에서 오래 싸우면 퇴로가 먼저 꺼진다</li>
+    </ul>
+    <div class="note-box">
+      <h5>동행과 곱해지는 지점</h5>
+      <p>동료를 데리고 있으면 판단이 느려지고 멈춰야 할 일이 생긴다. 그동안 뒤의 발자국은 계속 꺼진다. <strong>혼자면 돌아갈 수 있었을 거리가, 둘이면 돌아갈 수 없는 거리가 된다.</strong> 새 시스템 없이 기존 두 규칙이 곱해져 나오는 긴장이다.</p>
+    </div>
+
+    <h4>초기 수치 (플레이 테스트로 조정)</h4>
+    <div class="grid c3">
+      <div class="cell"><span class="figure">1/6</span><h5>등불 반경</h5><p>화면 폭 대비. 한 화면을 다 못 본다.</p></div>
+      <div class="cell"><span class="figure">20~30초</span><h5>발자국 지속</h5><p>마지막 5초에 급격히 어두워져 “곧 꺼진다”가 보이게.</p></div>
+      <div class="cell"><span class="figure">2~3개</span><h5>화톳불 소지</h5><p>적어야 “여기서 쓸까” 고민이 산다. 10개면 아무 데나 뿌린다.</p></div>
+    </div>
+
+    <h3>지도 표시 규칙</h3>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>상태</th><th>지도에 보이는 것</th></tr></thead>
+        <tbody>
+          <tr><td>구역 진입 직후</td><td>아무것도 없음</td></tr>
+          <tr><td>탐색 중</td><td>내가 지나간 곳만 흐릿하게 기록</td></tr>
+          <tr><td><strong>동료를 깨운 뒤</strong></td><td>+ <strong>종탑 표식 하나</strong> — 방향과 거리만, 경로는 없음</td></tr>
+          <tr><td>필경사 보유 시</td><td>+ 지형 윤곽 (길·절벽·건물)</td></tr>
+          <tr><td>구역 점등 후</td><td>전체 공개. 이제 내 땅</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>“어디인지는 알지만 어떻게 가는지는 모른다”</strong>가 핵심 제약이다. 지형은 여전히 어둠 속이라, 직선으로 가려 하면 절벽과 무너진 담과 몬스터 소굴이 나온다. 목표는 명확하되 경로는 탐험해야 하므로 어둠 시스템이 끝까지 유효하다. 필경사 동료의 가치도 이 제약에서 자동으로 설명된다.</p>
+  </section>
+
+  <!-- 06 ───────────────────────────────────────────────── -->
+  <section id="s6">
+    <div class="sec-head"><span class="sec-num">06</span><h2>동행자</h2></div>
+
+    <h3>세 가지 상태</h3>
+    <div class="grid c3">
+      <div class="cell"><h5>굳음 · frozen</h5><p>검은 실루엣으로 멈춰 있다. 어둠과 구분되지 않아 <strong>등불을 가까이 대야만</strong> 사람 형상임을 알아본다. 바로 옆을 지나쳤는데 못 알아보는 일이 성립한다.</p></div>
+      <div class="cell"><h5>깨어남 · awakened</h5><p>말을 걸면 검은색이 물러나며 색이 돌아온다. 게임 전체가 저채도인데 이 순간에만 한 사람 분량의 색이 켜진다. <strong>이 게임에서 가장 밝은 3초.</strong></p></div>
+      <div class="cell"><h5>침식 · eroding</h5><p>어둠 속에 오래 있으면 다시 색이 빠진다. 완전히 굳으면 그 자리에 멈춘다 — 죽지 않고, 다가가 다시 깨우면 된다. 벌이 아니라 시간 손실.</p></div>
+    </div>
+
+    <div class="note-box">
+      <h5>UI가 필요 없다</h5>
+      <p>동료의 침식도는 <strong>그의 색</strong>으로만 표시한다. 체력바도, 게이지도, 아이콘도 없다. 플레이어는 동료의 얼굴빛을 보고 판단한다. 그리고 이것은 게임의 주제와 정확히 같은 말을 한다 — <strong>사람은 어둠 속에 오래 두면 안 된다.</strong></p>
+    </div>
+
+    <h3>동료는 짐이 아니라 전우다</h3>
+    <p>동료는 지켜야 할 대상이 아니라 <strong>같이 싸우는 존재</strong>다. 이 결정으로 호위 임무의 고질병(느리고, 멍청하게 죽고, 도움이 안 되는)이 설계 차원에서 사라진다. 그리고 공짜로 따라오는 이점이 하나 있다.</p>
+    <div class="thesis" style="font-size:1.15rem">구조 대상이 그 구역 2막의 전투 스타일을 결정한다.</div>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>동행</th><th>2막의 전투 느낌</th></tr></thead>
+        <tbody>
+          <tr><td><strong>대장장이</strong></td><td>정면에서 같이 밀어붙인다. 묵직한 광역 공격</td></tr>
+          <tr><td><strong>사냥꾼</strong></td><td>내가 앞을 막고 그가 뒤에서 쏜다. 진형이 생긴다</td></tr>
+          <tr><td><strong>수도승</strong></td><td>공격은 약하나 <strong>주변을 잠시 밝힌다</strong> — 전투가 곧 조명 관리</td></tr>
+          <tr><td><strong>광부</strong></td><td>곡괭이로 지형을 부순다. 벽을 뚫어 도망칠 길을 만든다</td></tr>
+          <tr><td><strong>아이</strong></td><td>못 싸운다. <strong>유일하게 순수 호위인 구역</strong> = 난이도 정점</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>구역이 8개면 <strong>8가지 전투</strong>가 나온다. 몬스터를 새로 만들지 않고 동행자만 바꿔서. 그리고 다른 구역이 전부 “함께 싸우는” 경험이므로, 아이 구역 하나만 순수 호위로 만들면 그 한 판이 압도적으로 긴장된다. 규칙을 한 번 깨는 것이 효과적이려면 나머지가 일관돼야 하는데 이 구조가 정확히 그렇다.</p>
+
+    <h3>동료 명세</h3>
+    <p><strong>상시 효과가 주력이다.</strong> 데려가지 않아도 보상이 남아야 “구조하길 잘했다”가 된다. 그리고 능력치 +10% 같은 것 말고 <strong>여정의 규칙을 바꾸는 것</strong>을 준다.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>동료</th><th>상시 효과</th><th>동행 효과</th><th>침식 저항</th></tr></thead>
+        <tbody>
+          <tr><td><strong>대장장이</strong></td><td>무기 제작·강화 · <strong>등불 개량 → 발자국 +10초</strong></td><td>구조물 수리, 근접 전투</td><td>보통</td></tr>
+          <tr><td><strong>광부</strong></td><td><strong>기름 공급 → 등불 최대치 증가</strong></td><td>막힌 길 개통, 채집</td><td>높음 (좁은 곳에선 낮음)</td></tr>
+          <tr><td><strong>수도승</strong></td><td>출발 시 축복 — 첫 사망 1회 무효</td><td>어둠 정화 · <strong>주변 동료 침식 억제</strong></td><td>매우 높음</td></tr>
+          <tr><td><strong>약초꾼</strong></td><td>회복약 제작</td><td>독·상태이상 해제</td><td>보통</td></tr>
+          <tr><td><strong>사냥꾼</strong></td><td>식량 안정 → 여정 길이 제한 완화</td><td>원거리 공격, 몬스터 사전 감지</td><td>높음</td></tr>
+          <tr><td><strong>필경사</strong></td><td><strong>지도 — 어둠 속에서 지형이 보임</strong></td><td>미탐색 구역 표시</td><td>낮음</td></tr>
+          <tr><td><strong>떠돌이 병사</strong></td><td>훈련 → 플레이어 전투력 상승</td><td>탱커, 어그로 유도</td><td>높음</td></tr>
+          <tr><td><strong>종지기 노인</strong></td><td><strong>까마귀 울음 해석 — 위험 종류 사전 경고</strong></td><td>타종 속도 증가</td><td>보통</td></tr>
+          <tr><td><strong>아이</strong></td><td>주민 사기 대폭 상승</td><td>전투 불가 — 순수 호위</td><td>매우 낮음</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note-box">
+      <h5>설계 의도</h5>
+      <ul>
+        <li><strong>등불 관련 보상(대장장이·광부)을 초반에 배치한다.</strong> 핵심 자원이 빛이므로 그것이 늘어나는 것이 가장 크게 체감된다.</li>
+        <li><strong>필경사와 종지기 노인은 “정보”를 준다.</strong> 강해지는 게 아니라 <em>덜 무서워지는</em> 보상인데, 공포가 핵심인 게임에서는 이쪽이 더 강력하다.</li>
+        <li><strong>동행 인원은 1명으로 제한한다.</strong> 구조 대상이 이미 함께 가므로, 여기에 2~3명을 붙이면 파티 관리 게임이 된다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 07 ───────────────────────────────────────────────── -->
+  <section id="s7">
+    <div class="sec-head"><span class="sec-num">07</span><h2>어둠과 까마귀</h2></div>
+
+    <h3>까마귀 — 어둠의 목소리</h3>
+    <p>몬스터 출현은 반드시 <strong>소리로 먼저 예고</strong>된다. 단순한 효과음이 아니라 정보 체계로 설계한다.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>소리</th><th>의미</th><th>플레이어의 대응</th></tr></thead>
+        <tbody>
+          <tr><td>한 마리, 멀리서</td><td>단독 몬스터 접근</td><td>등불 확인, 자세 잡기</td></tr>
+          <tr><td>여러 마리가 동시에</td><td>무리 출현</td><td>화톳불 쪽으로 후퇴 판단</td></tr>
+          <tr><td>울음이 점점 빨라짐</td><td>곧 도착 — 카운트다운</td><td>3~5초 내 준비</td></tr>
+          <tr><td><strong>갑자기 조용해짐</strong></td><td><strong>큰 것이 온다</strong></td><td>도망</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>마지막 줄이 가장 중요하다. <strong>소리가 나는 것보다 소리가 사라지는 것이 무섭다.</strong> 게임 내내 까마귀 소리에 익숙해진 플레이어는 그 소리가 뚝 끊기는 순간 심장이 내려앉는다. 새 에셋 없이 <strong>기존 소리를 끄는 것만으로</strong> 최고 강도의 긴장을 만들 수 있다 — 비용이 들지 않는 연출이다.</p>
+
+    <h3>까마귀를 화면에도 쓴다</h3>
+    <ul>
+      <li>아직 밝히지 않은 종탑에는 <strong>까마귀 떼가 앉아 있다</strong> — 멀리서도 보이는 미점령 표식</li>
+      <li>종이 울리는 순간 일제히 날아오른다 — 점등 연출의 클라이맥스</li>
+      <li>밝힌 구역에 까마귀가 다시 보이면 <strong>어둠이 되돌아왔다는 경고</strong></li>
+    </ul>
+    <p>하나의 요소가 세 가지 정보를 전달한다. 그리고 게임의 오디오 정체성이 두 소리로 선명하게 압축된다.</p>
+    <pre>   <b>까마귀 울음</b>   ←→   <b>종소리</b>
+      어둠                빛
+      경고                안전
+      흩어짐              모임</pre>
+
+    <h3>점령 이후 — 긴장을 남기는 장치</h3>
+    <p>기본은 영구 안전이다. 다만 조건 하나를 붙인다.</p>
+    <div class="thesis" style="font-size:1.15rem">종탑은 계속 울려야 하고, 종은 사람이 울린다.</div>
+    <ul>
+      <li>각 구역의 종탑에 <strong>동료를 배치</strong>해야 그 구역이 밝게 유지된다</li>
+      <li>그를 원정에 데려가면 → 종이 침묵 → 어둠이 가장자리부터 서서히 잠식</li>
+      <li>돌아와 다시 울리면 회복</li>
+    </ul>
+    <p>이러면 지도가 체크리스트가 아니라 <strong>운영해야 할 판</strong>이 된다. 그리고 후반에 대장장이가 <strong>자동 타종 장치</strong>(추와 톱니로 도는 기계 종)를 만들어주면 사람 없이도 유지된다.</p>
+    <div class="note-box">
+      <h5>난이도 곡선이 서사와 같은 방향으로 흐른다</h5>
+      <p><strong>초반</strong> 사람이 부족해 빡빡하다 → 어둡고 조인다 · <strong>중반</strong> 누구를 어디 둘지 고민 → 운영의 재미 · <strong>후반</strong> 기계 종으로 해방 → 원정이 자유로워진다. 게임이 쉬워지는 것 자체가 “세상이 나아졌다”는 서사가 된다.</p>
+    </div>
+  </section>
+
+  <!-- 08 ───────────────────────────────────────────────── -->
+  <section id="s8">
+    <div class="sec-head"><span class="sec-num">08</span><h2>콘텐츠 규모</h2></div>
+
+    <div class="note-box warn">
+      <h5>NPC 종류에 대한 현실적 경고</h5>
+      <p>핵심 동료 1명당 <strong>상시 효과 · 동행 효과 · 전투 스타일 · 침식 특성 · 고유 대사</strong> 다섯 가지를 만들어야 한다. 20종을 설계하면 100개의 항목이 된다. <strong>1인 개발로는 불가능하다.</strong> 종류가 많다는 인상은 유지하되, 실제로 만드는 것은 최소로 줄이는 구조가 필요하다.</p>
+    </div>
+
+    <h3>2단 구조로 해결한다</h3>
+    <div class="grid c2">
+      <div class="cell"><h5>핵심 동료 · 5~6명</h5><p>이름, 고유 대사, 삼중 역할, 스토리 분기. 개별 설계 대상. <strong>구역 하나에 한 명씩 대응.</strong></p></div>
+      <div class="cell"><h5>일반 주민 · 다수</h5><p><code>{직업, 능력치}</code> 데이터만 가진 배치 가능 유닛. 이름은 목록에서 조합 생성. <strong>파일에서 읽어온다.</strong></p></div>
+    </div>
+    <p>“종류가 정말 많다”는 체감은 유지하면서 실제로 만들 것은 3~4명분이 된다. 그리고 이 구조 자체가 <strong>데이터 주도 설계 / 핵심 로직과 콘텐츠의 분리</strong>라는, 소프트웨어공학 발표에 그대로 쓸 수 있는 설계 결정이다.</p>
+
+    <h4>목표 규모</h4>
+    <div class="grid c3">
+      <div class="cell"><span class="figure">3~4</span><h5>구역</h5><p>각 구역 = 폐허 마을 + 종탑. 하나당 플레이 20~30분. 구조는 8개까지 확장 가능하게 짜되 <strong>계획은 4개로</strong> 세운다.</p></div>
+      <div class="cell"><span class="figure">3~4</span><h5>핵심 동료</h5><p>구역과 1:1 대응. 만나는 순서가 곧 난이도 곡선.</p></div>
+      <div class="cell"><span class="figure">2~3</span><h5>몬스터 종류</h5><p>전부 사람 형체. 동행자 조합으로 다양성을 만든다.</p></div>
+    </div>
+  </section>
+
+  <!-- 09 ───────────────────────────────────────────────── -->
+  <section id="s9">
+    <div class="sec-head"><span class="sec-num">09</span><h2>기술 사항</h2></div>
+
+    <h3>현재 코드베이스</h3>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>항목</th><th>현황</th></tr></thead>
+        <tbody>
+          <tr><td>언어 / 표준</td><td>C++17, clang(macOS) · MSVC(Windows)</td></tr>
+          <tr><td>그래픽</td><td>OpenGL 3.3 Core Profile, GLSL 330</td></tr>
+          <tr><td>창 / 입력</td><td>GLUT (Windows: freeglut · macOS: GLUT.framework)</td></tr>
+          <tr><td>렌더링 능력</td><td><strong><code>DrawSolidRect</code> 하나뿐.</strong> 단색 사각형. VBO 1개, 셰이더 1쌍</td></tr>
+          <tr><td>빌드</td><td>Windows: <code>SimpleGame.sln</code> · macOS: <code>Makefile</code> <span class="tag done">완료</span></td></tr>
+          <tr><td>없는 것</td><td>텍스처, 오디오, 델타 타임, 입력 상태, 충돌, 씬 관리, 맵 데이터, 텍스트</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note-box">
+      <h5>선행 정리 사항</h5>
+      <p><code>Renderer::CompileShaders()</code>가 실패 시 <code>GLuint</code> 반환형에 <code>-1</code>을 돌려준다. 이 값이 <code>4294967295</code>가 되어 <code>m_SolidRectShader &gt; 0</code> 검사를 통과하므로, <strong>셰이더 로딩 실패가 초기화 성공으로 보고된다.</strong> 실패 값을 <code>0</code>으로 바꿔야 한다. 착수 전에 정리할 것.</p>
+    </div>
+
+    <h3>기술 요구사항</h3>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>우선</th><th>항목</th><th>내용</th><th>난이도</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag p0">P0</span></td><td><strong>델타 타임 루프</strong></td><td>등불 감쇠·침식·발자국이 전부 시간 기반. <code>glutGet(GLUT_ELAPSED_TIME)</code> 또는 <code>std::chrono</code></td><td>하</td></tr>
+          <tr><td><span class="tag p0">P0</span></td><td><strong>입력 상태 관리</strong></td><td>현재는 콜백 즉시 처리라 대각선 이동·키 홀드 불가. 키 상태 배열 + <code>glutKeyboardUpFunc</code> + <code>glutIgnoreKeyRepeat(1)</code></td><td>하</td></tr>
+          <tr><td><span class="tag p0">P0</span></td><td><strong>알파 블렌딩</strong></td><td>어둠 오버레이 필수. <code>glEnable(GL_BLEND)</code> + <code>glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)</code></td><td>하</td></tr>
+          <tr><td><span class="tag p0">P0</span></td><td><strong>밝기 격자 (LightGrid)</strong> ★</td><td>게임의 심장. 아래 별도 항목</td><td>중</td></tr>
+          <tr><td><span class="tag p0">P0</span></td><td><strong>AABB 충돌</strong></td><td>이동 충돌 + 공격 판정. 사각형 렌더러와 같은 수학이라 추가 비용이 거의 없다</td><td>하</td></tr>
+          <tr><td><span class="tag p0">P0</span></td><td><strong>궤적 큐 동행</strong></td><td>플레이어의 과거 위치를 큐에 저장, 동료는 N프레임 전 위치로. <strong>길찾기 알고리즘이 불필요해진다</strong></td><td>하</td></tr>
+          <tr><td><span class="tag p0">P0</span></td><td><strong>타일맵 로딩</strong></td><td>맵을 하드코딩하지 않는다. 텍스트 격자 파일부터 시작</td><td>중</td></tr>
+          <tr><td><span class="tag p1">P1</span></td><td><strong>오디오</strong> ★</td><td>까마귀와 종이 게임 정체성인데 OpenGL에는 오디오가 없다. <code>miniaudio</code>(단일 헤더, 의존성 없음) 권장</td><td>중</td></tr>
+          <tr><td><span class="tag p1">P1</span></td><td><strong>씬 / 상태 관리</strong></td><td>마을 · 여정 · 타종전 · 메뉴. State 패턴</td><td>중</td></tr>
+          <tr><td><span class="tag p1">P1</span></td><td><strong>몬스터 AI</strong></td><td>밝기 격자를 조회해 밝은 칸 회피 + 플레이어 추적. 조회 한 번으로 끝난다</td><td>중</td></tr>
+          <tr><td><span class="tag p1">P1</span></td><td><strong>2.5D 깊이 정렬</strong></td><td>현재 <code>DrawSolidRect</code>의 <code>z</code> 인자는 무시되고 있다. 아래 함정 항목 참고</td><td>중</td></tr>
+          <tr><td><span class="tag p1">P1</span></td><td><strong>이벤트 시스템</strong></td><td>트리거 · 조건 · 결과. 동료 보유 여부를 조건으로 받는 구조</td><td>중</td></tr>
+          <tr><td><span class="tag p2">P2</span></td><td><strong>한글 텍스트 렌더링</strong> ⚠</td><td>가장 과소평가되는 작업. 아래 함정 항목 참고</td><td>상</td></tr>
+          <tr><td><span class="tag p2">P2</span></td><td><strong>스프라이트 / 텍스처</strong></td><td><code>stb_image</code> + <code>glTexImage2D</code>. 정점에 UV 추가 → VBO 포맷과 셰이더 동시 수정</td><td>중</td></tr>
+          <tr><td><span class="tag p2">P2</span></td><td><strong>세이브 / 로드</strong></td><td>구역 점등 상태 · 보유 동료 · 진행도. 텍스트 파일로 충분</td><td>하</td></tr>
+          <tr><td><span class="tag p2">P2</span></td><td><strong>데이터 주도 NPC 정의</strong></td><td>일반 주민을 파일에서 로딩. 발표용 설계 포인트</td><td>중</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>핵심 자료구조 — 밝기 격자</h3>
+    <p>맵을 격자로 나누고 각 칸의 밝기를 실수 하나로 들고 있다가, 어두운 만큼 반투명 검은 사각형을 덮어 그린다. <strong>텍스처도 셰이더 개조도 필요 없다.</strong></p>
+    <pre><b>float</b> light[H][W];              <i>// 0.0 = 완전한 어둠, 1.0 = 밝음</i>
+
+<i>// 매 프레임</i>
+플레이어 주변    → light[y][x] = 1.0
+화톳불 · 종탑    → 감쇠 면제
+그 외 모든 칸    → light[y][x] -= decay * dt
+렌더            → 밝기가 낮을수록 진한 검은 사각형을 덮어 그림</pre>
+    <p>이 배열 하나가 <strong>게임의 모든 규칙을 담는다.</strong></p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>시스템</th><th>구현</th></tr></thead>
+        <tbody>
+          <tr><td>시야 / 어둠 렌더링</td><td>밝기에 반비례하는 알파의 검은 사각형</td></tr>
+          <tr><td>등불 발자국</td><td>매 프레임 감쇠 — <strong>자동으로 꺼진다</strong></td></tr>
+          <tr><td>안전 구역</td><td>밝기 &gt; 임계값</td></tr>
+          <tr><td>몬스터 이동 제한</td><td>목표 칸의 밝기 조회 한 번</td></tr>
+          <tr><td>동료 침식도</td><td>자기 위치 칸의 밝기를 읽어 <code>darkness</code> 증감</td></tr>
+          <tr><td>구역 점등</td><td>해당 구역 전 칸을 1.0으로 고정</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>동료 = 색 하나</h3>
+    <p>“굳은 형상”과 “동료”는 <strong>같은 코드</strong>이고 상태 변수 하나 차이다. 현재의 <code>DrawSolidRect</code> 시그니처를 한 글자도 바꾸지 않고 표현된다.</p>
+    <pre><b>float</b> t = npc.darkness;   <i>// 0.0 = 깨어남, 1.0 = 완전히 굳음</i>
+
+g_Renderer-&gt;DrawSolidRect(
+    npc.x, npc.y, npc.z, npc.size,
+    npc.baseR * (1.0f - t),
+    npc.baseG * (1.0f - t),
+    npc.baseB * (1.0f - t),
+    1.0f);</pre>
+
+    <h3>구조 제안</h3>
+    <pre>Game                      <i>루프 · 델타 타임 · 전역 상태</i>
+ ├─ SceneManager          <i>State 패턴</i>
+ │   ├─ VillageScene
+ │   ├─ ExpeditionScene   <i>← 게임의 본체</i>
+ │   └─ BellDefenseScene
+ ├─ World
+ │   ├─ TileMap           <i>지형 · 충돌</i>
+ │   ├─ <b>LightGrid</b>         <i>★ 핵심 자료구조</i>
+ │   └─ EntityList
+ ├─ Entity                <i>Player · Companion · Monster</i>
+ ├─ Renderer              <i>기존 확장</i>
+ ├─ InputState
+ ├─ AudioManager
+ └─ SaveData</pre>
+    <p>소프트웨어공학 수업 관점에서 짚을 만한 설계 결정: <strong>State 패턴</strong>(씬 전환), <strong>데이터 주도 설계</strong>(NPC·맵·이벤트를 파일로 분리), <strong>단일 책임</strong>(LightGrid가 조명·AI·침식의 단일 진실 공급원).</p>
+
+    <h3>기술적 함정</h3>
+    <div class="note-box warn">
+      <h5>1 · Core Profile에서 한글 텍스트</h5>
+      <p>macOS는 GLSL 330을 Core Profile로만 제공하므로 <code>glutBitmapCharacter</code> 같은 즉시 모드 함수를 <strong>쓸 수 없다.</strong> 게다가 한글은 글자 수가 많아 아스키 폰트 아틀라스 예제를 그대로 쓸 수 없다. <strong>대사에 실제로 쓰는 글자만 골라 미리 렌더링한 비트맵 아틀라스</strong>를 만드는 방식을 권한다. 이 작업은 매번 과소평가되므로 일정에 별도로 잡을 것.</p>
+    </div>
+    <div class="note-box warn">
+      <h5>2 · 알파 블렌딩과 깊이 테스트는 충돌한다</h5>
+      <p>어둠 오버레이가 반투명이므로 <code>GL_DEPTH_TEST</code>로 2.5D 정렬을 하면 뒤쪽이 지워져 블렌딩이 깨진다. <strong>y좌표 기준으로 정렬해 뒤에서 앞으로 그리는 화가 알고리즘</strong>을 쓰고 깊이 테스트는 끄는 편이 안전하다. <code>DrawSolidRect</code>의 <code>z</code> 인자는 정렬 키로 활용한다.</p>
+    </div>
+    <div class="note-box warn">
+      <h5>3 · GLUT의 한계 — 조기 결정 필요</h5>
+      <p>GLUT에는 게임패드, 마우스 델타, 오디오, 프레임 타이밍 제어가 없다. 이대로 갈지 <strong>SDL2 또는 GLFW로 이주</strong>할지는 나중에 결정할수록 비용이 커진다. M1이 끝나는 시점에 판단할 것. 현재 설계(키보드 이동 + 근접 전투)만 유지한다면 GLUT로 완주 가능하다.</p>
+    </div>
+    <div class="note-box warn">
+      <h5>4 · 크로스 플랫폼 유지</h5>
+      <p>Windows(MSVC/GLEW/freeglut)와 macOS(clang/시스템 프레임워크) 양쪽 빌드가 이미 갖춰져 있다. 한쪽만 보고 개발하면 반드시 깨진다. 새 파일을 추가할 때 <code>.vcxproj</code>와 <code>Makefile</code>을 <strong>동시에</strong> 갱신할 것. 1인 개발이라 깨진 것을 알려줄 사람이 없으므로, <strong>주 1회 양쪽 빌드 확인</strong>을 습관으로 고정한다. 제출 직전에 발견하면 손쓸 수 없다.</p>
+    </div>
+
+    <h4>외부 라이브러리 후보</h4>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>용도</th><th>후보</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td>오디오</td><td><code>miniaudio</code></td><td>단일 헤더, 의존성 없음, 크로스 플랫폼. 가장 도입이 쉽다</td></tr>
+          <tr><td>이미지 로딩</td><td><code>stb_image</code></td><td>단일 헤더. 스프라이트 도입 시</td></tr>
+          <tr><td>폰트 래스터화</td><td><code>stb_truetype</code></td><td>아틀라스 생성용. 런타임이 아니라 <strong>빌드 시</strong> 한 번 돌리는 쪽을 권함</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>전부 단일 헤더 라이브러리라 프로젝트에 파일 하나씩 추가하면 되고, 빌드 시스템을 건드리지 않는다. 이 프로젝트 규모에서는 이 셋 이상은 필요 없다.</p>
+
+    <h3>장기 유지보수를 위한 설계</h3>
+    <p>이 프로젝트는 학기 발표로 끝나지 않고 계속 이어진다. 그렇다면 <strong>지금 내리는 구조 결정의 유효기간이 한 학기가 아니라 몇 년</strong>이 된다. 판정 기준을 하나로 잡는다.</p>
+    <div class="thesis" style="font-size:1.15rem">새 구역을 하나 추가하는 데 C++ 코드를 몇 줄 고쳐야 하는가? 목표는 0줄이다.</div>
+    <p>이 기준을 통과하면 학기가 끝난 뒤에도 <strong>콘텐츠를 늘리는 일이 개발이 아니라 편집</strong>이 된다. 몇 달 쉬었다 돌아와도 맵 파일 하나 추가하는 것으로 재개할 수 있다. 통과하지 못하면 구역을 늘릴 때마다 코드를 파헤쳐야 하고, 그 시점의 자신은 이미 코드를 잊은 상태다.</p>
+
+    <h4>코드와 데이터의 경계</h4>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>C++ 코드에 있어야 할 것 — 규칙</th><th>파일로 빼야 할 것 — 내용</th></tr></thead>
+        <tbody>
+          <tr><td>밝기 격자의 감쇠·전파 규칙</td><td>구역 맵, 종탑 위치, 집의 배치</td></tr>
+          <tr><td>전투 판정과 충돌</td><td>몬스터 능력치, 스폰 테이블, 웨이브 구성</td></tr>
+          <tr><td>동행 궤적 · 침식 계산</td><td>NPC 정의 — 색, 효과, 침식 저항, 대사</td></tr>
+          <tr><td>이벤트 <em>실행기</em></td><td>이벤트 <em>정의</em> — 조건, 선택지, 결과</td></tr>
+          <tr><td>타종전 진행 로직</td><td>구역별 타종 시간, 웨이브 수</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>왼쪽은 <strong>게임이 무엇인가</strong>이고 오른쪽은 <strong>이번 게임에 무엇이 들어있는가</strong>다. 왼쪽은 거의 안 바뀌고 오른쪽은 계속 바뀐다. 이 경계를 M3~M5 사이에 확실히 그어두면 이후 몇 년의 작업이 편해진다.</p>
+
+    <div class="note-box warn">
+      <h5>인프라 — 장기 프로젝트라면 지금 당장</h5>
+      <ul>
+        <li><strong>버전 관리가 없다.</strong> 현재 이 프로젝트는 git 저장소가 아니고, 무시 목록 파일도 <code>gitignore</code>라는 이름이라 동작하지 않는다(<code>.gitignore</code>여야 한다). 몇 년 갈 프로젝트에서 이것이 1순위다. <code>git init</code> → <code>.gitignore</code> 정리 → 첫 커밋 → 원격 저장소.</li>
+        <li><strong>빌드 파일이 두 벌이다.</strong> <code>Makefile</code>(macOS)과 <code>.vcxproj</code>(Windows)를 매번 같이 고쳐야 한다. 파일이 10개를 넘어가면 반드시 어긋난다. <strong>CMake 하나로 통합</strong>해 양쪽을 생성하는 편이 낫다 — 급하지 않지만 M4쯤에는 처리할 것.</li>
+        <li><strong>결정 기록을 남긴다.</strong> 왜 GLUT를 유지했는지, 왜 길찾기 대신 궤적 큐를 썼는지, 왜 깊이 테스트를 껐는지. <strong>3개월 뒤의 자신은 남이다.</strong> 짧은 <code>DECISIONS.md</code> 한 장이면 충분하고, 이것이 없으면 재개할 때마다 같은 고민을 다시 한다.</li>
+        <li><strong>할 일을 코드 주석에 흩지 않는다.</strong> <code>TODO</code>를 소스 여기저기에 박아두면 나중에 찾지 못한다. 한 파일 또는 이슈 트래커 한 곳에 모은다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 10 ───────────────────────────────────────────────── -->
+  <section id="s10">
+    <div class="sec-head"><span class="sec-num">10</span><h2>로드맵</h2></div>
+
+    <p class="lead">전체를 얕게 만들지 말고 한 줄기를 끝까지 완성한다. <strong>구역 하나가 제대로 돌아가면 나머지는 콘텐츠 복제다.</strong> 발표에서도 “구역 하나가 완결된 게임”이 “여러 구역이 반쯤 된 게임”보다 훨씬 잘 보인다.</p>
+    <p>아래 기간은 <strong>1인 개발, 주 10~15시간 투입</strong>을 가정한 값이다. 다른 과목과 병행하는 조건이므로 낙관적으로 잡지 않았다.</p>
+    <p><strong>학기 종료는 프로젝트 종료가 아니다.</strong> 발표판은 완성품이 아니라 <code>v0.1</code> 태그이고, 그 이후로도 계속 이어진다. 그래서 M1~M6은 “한 학기에 끝내야 할 전부”가 아니라 <strong>첫 번째 구간</strong>으로 잡는다. 잘리는 항목은 취소되는 것이 아니라 학기 밖으로 미뤄지는 것이다.</p>
+
+    <h4>학기 중 · 필수 — 여기까지가 “게임”이다</h4>
+    <ol class="loop">
+      <li><span class="step">M1</span><span><b>이동 · 등불 · 어둠 격자 — 3주</b><span class="note">델타 타임, 입력 상태, 알파 블렌딩, LightGrid, 발자국 감쇠. <strong>이 단계에서 재미가 없으면 설계를 고쳐야 한다.</strong> 사각형만으로 확인 가능하고, 그림을 그리기 전에 판단할 수 있다는 것이 이 순서의 요점.</span></span></li>
+      <li><span class="step">M2</span><span><b>까마귀 · 몬스터 · 전투 — 2주</b><span class="note">AABB 충돌, 밝기 회피 AI, 오디오 도입, 까마귀 신호 체계. 어둠에 위험이 생긴다.</span></span></li>
+      <li class="peak"><span class="step">M3</span><span><b>구역 1개 완주 — 4주</b><span class="note">수색 → 깨우기 → 궤적 큐 동행 → 이벤트 → 타종전 → 점등. <strong>여기까지가 이 게임의 전부다.</strong> 플레이 가능한 세로 슬라이스이자, 최악의 경우 발표 제출물.</span></span></li>
+    </ol>
+
+    <h4>학기 중 · 가능하면</h4>
+    <ol class="loop">
+      <li><span class="step">M4</span><span><b>화톳불 · 침식 · 이벤트 확장 — 2주</b><span class="note">자원 관리 층위 추가. 동료 침식 시스템 완성.</span></span></li>
+      <li><span class="step">M5</span><span><b>구역 2~3개 · 세이브 — 3주</b><span class="note">타일맵 데이터화, 씬 관리, 저장/불러오기. <strong>콘텐츠 복제가 실제로 되는지</strong>를 검증하는 단계이기도 하다.</span></span></li>
+    </ol>
+
+    <h4>학기 중 · 시간이 남으면</h4>
+    <ol class="loop">
+      <li><span class="step">M6</span><span><b>연출 · 텍스트 · 밸런스</b><span class="note">채도 연출, 한글 텍스트, 스프라이트, 수치 조정. <strong>잘리는 것을 전제로 계획한다.</strong> 여기 있는 항목은 없어도 게임이 성립한다.</span></span></li>
+    </ol>
+
+    <p>필수 구간이 <strong>9주</strong>, 전체가 14주. 한 학기에 M3까지는 확실히 닿고, M5까지 가면 성공이다.</p>
+
+    <h3>학기 이후 — 버전 로드맵</h3>
+    <p>발표 시점의 상태를 <code>v0.1</code>로 태그하고, 이후는 버전 단위로 잡는다. 기간을 정하지 않는 것이 중요하다 — 마감이 없는 개인 프로젝트에 날짜를 붙이면 부채감만 남는다. 대신 <strong>각 버전이 무엇을 갖추면 끝인지</strong>를 정의한다.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>버전</th><th>완료 조건</th><th>핵심 작업</th></tr></thead>
+        <tbody>
+          <tr><td><strong><code>v0.1</code></strong><br><span class="tag p1">발표판</span></td><td>구역 하나를 처음부터 끝까지 플레이할 수 있다</td><td>M1~M3. 사각형 그래픽, 임시 사운드로 무방</td></tr>
+          <tr><td><strong><code>v0.2</code></strong><br><span class="tag open">구조</span></td><td><strong>코드를 안 고치고 구역을 추가할 수 있다</strong></td><td>맵·NPC·이벤트의 데이터화, CMake 통합, 세이브</td></tr>
+          <tr><td><strong><code>v0.3</code></strong><br><span class="tag open">분량</span></td><td>구역 4개 이상, 처음부터 끝까지 이어진다</td><td>콘텐츠 제작 위주. 이 단계는 코딩이 아니라 편집이어야 한다</td></tr>
+          <tr><td><strong><code>v0.4</code></strong><br><span class="tag open">표현</span></td><td>사각형이 아닌 화면, 한글 대사, 실제 사운드</td><td>스프라이트, 텍스트 렌더링, 오디오 교체, 채도 연출</td></tr>
+          <tr><td><strong><code>v1.0</code></strong><br><span class="tag done">공개</span></td><td>모르는 사람이 설치해서 끝까지 할 수 있다</td><td>결말, 밸런스, 튜토리얼, 배포 패키징</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><code>v0.2</code>가 이 로드맵의 분수령이다. <strong>여기를 통과하지 못하면 v0.3 이후는 오지 않는다.</strong> 구역을 늘릴 때마다 코드를 파헤쳐야 하는 구조라면, 학기가 끝나고 동기가 식은 뒤에는 아무도 — 자기 자신조차 — 그 작업을 하지 않는다. 반대로 통과하면 시간 날 때 맵 하나씩 추가하는 식으로 몇 년이든 이어갈 수 있다.</p>
+
+    <div class="note-box">
+      <h5>재개 가능한 상태로 남기기</h5>
+      <p>장기 개인 프로젝트가 죽는 가장 흔한 원인은 실력이나 시간이 아니라 <strong>재진입 비용</strong>이다. 두 달 쉬고 돌아왔을 때 빌드가 깨져 있고 어디까지 했는지 모르면 그대로 끝난다. 손을 놓기 전에 세 가지만 해두면 된다.</p>
+      <ul>
+        <li>빌드가 되는 상태에서 커밋하고 태그를 붙인다</li>
+        <li><code>DECISIONS.md</code>에 마지막에 하던 일과 다음에 할 일을 세 줄 적는다</li>
+        <li>실행 파일을 한 번 돌려보고 스크린샷을 남긴다 — 돌아왔을 때 <strong>동기를 되찾는 것이 코드를 되찾는 것보다 어렵다</strong></li>
+      </ul>
+    </div>
+
+    <div class="note-box warn">
+      <h5>1인 개발 원칙 — 혼자라서 지켜야 하는 것들</h5>
+      <ul>
+        <li><strong>매 마일스톤 끝에 반드시 실행되는 빌드를 남긴다.</strong> 혼자면 깨진 상태를 알려줄 사람도, 되돌려줄 사람도 없다.</li>
+        <li><strong>리팩터링은 마일스톤 사이에만.</strong> 기능 개발 중에 구조를 고치기 시작하면 어느 쪽도 끝나지 않는다.</li>
+        <li><strong>컷 라인을 미리 정한다.</strong> 무엇을 버릴지 먼저 정해두면 막판에 흔들리지 않는다 — 이 문서의 M6이 그 목록이다.</li>
+        <li><strong>에셋은 마지막까지 사각형으로.</strong> 그림에 시간을 쓰기 시작하면 게임이 안 나온다. 이 설계는 색과 밝기만으로 대부분의 연출이 성립하도록 짜여 있다.</li>
+        <li><strong>하루 이상 막히면 우회 설계로 바꾼다.</strong> 팀이라면 물어볼 사람이 있지만 혼자는 없다. 기술적 난관은 정면 돌파보다 <em>그 기능이 필요 없는 설계</em>로 피하는 쪽이 항상 빠르다 — 동행 NPC에 길찾기 대신 궤적 큐를 쓰기로 한 것이 그 예다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 11 ───────────────────────────────────────────────── -->
+  <section id="s11">
+    <div class="sec-head"><span class="sec-num">11</span><h2>미결 사항</h2></div>
+
+    <p class="lead">아래는 아직 정하지 않았고, 정해야 다음 단계로 넘어갈 수 있는 것들이다.</p>
+
+    <div class="grid c2">
+      <div class="cell">
+        <h5>전투 상세 <span class="tag p0">시급</span></h5>
+        <p>몇 대 맞으면 죽는가 · 회피가 있는가 · 무기 종류 · <strong>동료의 전투는 자동인가 명령인가</strong>. 이것이 정해져야 수색 구간의 “문 여는 도박”과 타종전의 물량이 실제 숫자로 굴러간다.</p>
+      </div>
+      <div class="cell">
+        <h5>구역 개수와 순서</h5>
+        <p>어떤 동료를 몇 번째로 만나는지가 곧 <strong>난이도 곡선이자 스토리 순서</strong>다. 등불 관련 동료(대장장이·광부)를 앞에 두는 것만 확정.</p>
+      </div>
+      <div class="cell">
+        <h5>아트 방향</h5>
+        <p>사각형 프로토타입을 어디까지 유지할지. 스프라이트 도입 시점이 M5인지 M6인지에 따라 VBO 포맷 변경 일정이 달라진다.</p>
+      </div>
+      <div class="cell">
+        <h5>결말 분기</h5>
+        <p>침묵 / 타종 두 갈래를 둘 다 만들 것인지, 하나로 갈 것인지. 1인 개발 기준으로는 <strong>하나로 가는 쪽</strong>을 권한다. 분기는 가장 먼저 잘리는 항목이다.</p>
+      </div>
+      <div class="cell">
+        <h5>제목 확정</h5>
+        <p>《종소리가 닿는 곳까지》는 가제. 중세 교구 개념에서 왔고 킥을 그대로 설명한다는 장점이 있다. 확정 시점은 M3 이후로 미뤄도 무방.</p>
+      </div>
+      <div class="cell">
+        <h5>GLUT 유지 여부</h5>
+        <p>M1 종료 시점에 판단. 이주한다면 그때가 가장 비용이 싸다.</p>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <h5>착수 전에 정할 것</h5>
+      <p><strong>전투 상세 하나면 된다.</strong> 나머지는 M1~M2를 진행하면서 자연히 좁혀진다. 전투가 정해지면 M2·M3의 작업 항목이 확정되고 프로토타입 착수가 가능하다.</p>
+    </div>
+  </section>
+
+  <div class="colophon">
+    <span>종소리가 닿는 곳까지</span>
+    <span>게임 기획서 초안 v0.1</span>
+    <span>2026.09.08</span>
+    <span>전투 · 구역 구성 미확정</span>
+  </div>
+
+  </main>
+</div>
+</div>
