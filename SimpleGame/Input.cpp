@@ -57,3 +57,13 @@ bool Input::MoveDown() const
 {
 	return m_Ascii['s'] || m_Special[GLUT_KEY_DOWN];
 }
+
+bool Input::Interact() const
+{
+	return m_Ascii[' '];
+}
+
+bool Input::PlaceFire() const
+{
+	return m_Ascii['f'];
+}

@@ -2,7 +2,16 @@
 #include "Renderer.h"
 
 #include <climits>
+#include <cmath>
 #include <cstring>
+
+namespace
+{
+	// Shape.fs의 u_Shape 값과 맞춘다.
+	const int kShapeRoundRect = 0;
+	const int kShapeEllipse = 1;
+	const int kShapeTriangle = 2;
+}
 
 Renderer::Renderer(int windowSizeX, int windowSizeY)
 {
@@ -27,6 +36,7 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 
 	//Load shaders
 	m_SolidRectShader = CompileShaders("./Shaders/SolidRect.vs", "./Shaders/SolidRect.fs");
+	m_ShapeShader = CompileShaders("./Shaders/Shape.vs", "./Shaders/Shape.fs");
 	
 	//Create VBOs
 	CreateVertexBufferObjects();
@@ -36,12 +46,32 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 		m_LocTrans = glGetUniformLocation(m_SolidRectShader, "u_Trans");
 		m_LocColor = glGetUniformLocation(m_SolidRectShader, "u_Color");
 		m_AttribPosition = glGetAttribLocation(m_SolidRectShader, "a_Position");
+		m_LocEmissive = glGetUniformLocation(m_SolidRectShader, "u_Emissive");
+	}
+
+	if (m_ShapeShader > 0)
+	{
+		m_ShapeAttribPosition = glGetAttribLocation(m_ShapeShader, "a_Position");
+		m_ShapeLocCenter = glGetUniformLocation(m_ShapeShader, "u_Center");
+		m_ShapeLocExtent = glGetUniformLocation(m_ShapeShader, "u_Extent");
+		m_ShapeLocRotation = glGetUniformLocation(m_ShapeShader, "u_Rotation");
+		m_ShapeLocColor = glGetUniformLocation(m_ShapeShader, "u_Color");
+		m_ShapeLocEmissive = glGetUniformLocation(m_ShapeShader, "u_Emissive");
+		m_ShapeLocShape = glGetUniformLocation(m_ShapeShader, "u_Shape");
+		m_ShapeLocHalfSize = glGetUniformLocation(m_ShapeShader, "u_HalfSize");
+		m_ShapeLocRoundness = glGetUniformLocation(m_ShapeShader, "u_Roundness");
+		m_ShapeLocSoftness = glGetUniformLocation(m_ShapeShader, "u_Softness");
+
+		// 창 크기는 바뀌지 않으므로 한 번만 보낸다.
+		glUseProgram(m_ShapeShader);
+		glUniform2f(glGetUniformLocation(m_ShapeShader, "u_Viewport"),
+		            static_cast<float>(m_WindowSizeX), static_cast<float>(m_WindowSizeY));
 	}
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	if (m_SolidRectShader > 0 && m_VBORect > 0)
+	if (m_SolidRectShader > 0 && m_VBORect > 0 && m_ShapeShader > 0 && m_VBOQuad > 0)
 	{
 		m_Initialized = true;
 	}
@@ -64,6 +94,17 @@ void Renderer::CreateVertexBufferObjects()
 	glGenBuffers(1, &m_VBORect);
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBORect);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(rect), rect, GL_STATIC_DRAW);
+
+	// 도형용 단위 사각형. 크기와 위치는 셰이더가 uniform으로 정한다.
+	const float quad[] =
+	{
+		-0.5f, -0.5f,   0.5f, -0.5f,   0.5f,  0.5f,
+		-0.5f, -0.5f,   0.5f,  0.5f,  -0.5f,  0.5f,
+	};
+
+	glGenBuffers(1, &m_VBOQuad);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
 }
 
 void Renderer::AddShader(GLuint ShaderProgram, const char* pShaderText, GLenum ShaderType)
@@ -185,6 +226,17 @@ GLuint Renderer::CompileShaders(const char* filenameVS, const char* filenameFS)
 
 void Renderer::DrawSolidRect(float x, float y, float z, float size, float r, float g, float b, float a)
 {
+	DrawRect(x, y, size, r, g, b, a, 0.0f);
+}
+
+void Renderer::DrawEmissiveRect(float x, float y, float z, float size, float r, float g, float b, float a,
+                                float emissive)
+{
+	DrawRect(x, y, size, r, g, b, a, emissive);
+}
+
+void Renderer::DrawRect(float x, float y, float size, float r, float g, float b, float a, float emissive)
+{
 	float newX, newY;
 
 	GetGLPosition(x, y, &newX, &newY);
@@ -194,6 +246,12 @@ void Renderer::DrawSolidRect(float x, float y, float z, float size, float r, flo
 	glUniform4f(m_LocTrans, newX, newY, 0, size);
 	glUniform4f(m_LocColor, r, g, b, a);
 
+	if (emissive != m_LastEmissive)
+	{
+		glUniform1f(m_LocEmissive, emissive);
+		m_LastEmissive = emissive;
+	}
+
 	glEnableVertexAttribArray(m_AttribPosition);
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBORect);
 	glVertexAttribPointer(m_AttribPosition, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
@@ -201,6 +259,79 @@ void Renderer::DrawSolidRect(float x, float y, float z, float size, float r, flo
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	glDisableVertexAttribArray(m_AttribPosition);
+	++m_DrawCount;
+}
+
+void Renderer::DrawShape(int shape, float x, float y, float halfWidth, float halfHeight, const Color& color,
+                         float rotation, float roundness, float softness, float emissive)
+{
+	if (halfWidth <= 0.0f || halfHeight <= 0.0f || color.a <= 0.0f)
+	{
+		return;
+	}
+
+	float centerX, centerY;
+	GetGLPosition(x, y, &centerX, &centerY);
+
+	// 경계를 부드럽게 섞을 여유. 이만큼 사각형을 크게 잡아야 가장자리가 잘리지 않는다.
+	const float padding = softness + 2.0f;
+
+	glUseProgram(m_ShapeShader);
+
+	glUniform2f(m_ShapeLocCenter, centerX, centerY);
+	glUniform2f(m_ShapeLocExtent, halfWidth + padding, halfHeight + padding);
+	glUniform1f(m_ShapeLocRotation, rotation);
+	glUniform4f(m_ShapeLocColor, color.r, color.g, color.b, color.a);
+	glUniform1f(m_ShapeLocEmissive, emissive);
+	glUniform1i(m_ShapeLocShape, shape);
+	glUniform2f(m_ShapeLocHalfSize, halfWidth, halfHeight);
+	glUniform1f(m_ShapeLocRoundness, roundness);
+	glUniform1f(m_ShapeLocSoftness, softness);
+
+	glEnableVertexAttribArray(m_ShapeAttribPosition);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
+	glVertexAttribPointer(m_ShapeAttribPosition, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	glDisableVertexAttribArray(m_ShapeAttribPosition);
+	++m_DrawCount;
+}
+
+void Renderer::DrawCircle(float x, float y, float radius, const Color& color, float emissive, float softness)
+{
+	DrawShape(kShapeEllipse, x, y, radius, radius, color, 0.0f, 0.0f, softness, emissive);
+}
+
+void Renderer::DrawEllipse(float x, float y, float radiusX, float radiusY, const Color& color,
+                           float rotation, float emissive, float softness)
+{
+	DrawShape(kShapeEllipse, x, y, radiusX, radiusY, color, rotation, 0.0f, softness, emissive);
+}
+
+void Renderer::DrawRoundRect(float x, float y, float width, float height, float roundness, const Color& color,
+                             float rotation, float emissive)
+{
+	DrawShape(kShapeRoundRect, x, y, width * 0.5f, height * 0.5f, color, rotation, roundness, 0.0f, emissive);
+}
+
+void Renderer::DrawTriangle(float x, float y, float width, float height, const Color& color,
+                            float rotation, float emissive)
+{
+	DrawShape(kShapeTriangle, x, y, width * 0.5f, height * 0.5f, color, rotation, 0.0f, 0.0f, emissive);
+}
+
+void Renderer::DrawSegment(float x0, float y0, float x1, float y1, float thickness, const Color& color,
+                           float emissive)
+{
+	const float dx = x1 - x0;
+	const float dy = y1 - y0;
+	const float length = std::sqrt(dx * dx + dy * dy);
+
+	// 양 끝이 둥근 막대. 둥근 사각형을 두 점 사이 방향으로 돌려 놓는다.
+	DrawShape(kShapeRoundRect, (x0 + x1) * 0.5f, (y0 + y1) * 0.5f,
+	          (length + thickness) * 0.5f, thickness * 0.5f, color,
+	          std::atan2(dy, dx), thickness * 0.5f, 0.0f, emissive);
 }
 
 void Renderer::GetGLPosition(float x, float y, float *newX, float *newY)

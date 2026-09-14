@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY.
 #include "Renderer.h"
 #include "Game.h"
 #include "Input.h"
+#include "PostProcess.h"
 
 // 맵이 30 x 20 타일, 타일 한 칸이 32픽셀이므로 창 크기가 결정된다.
 const int WINDOW_WIDTH = 960;
@@ -27,6 +28,7 @@ const int WINDOW_HEIGHT = 640;
 Renderer* g_Renderer = NULL;
 Game g_Game;
 Input g_Input;
+PostProcess g_Post;
 
 int g_PreviousTimeMs = 0;
 
@@ -92,14 +94,25 @@ void DriveScriptedWalk(float elapsed)
 // 콘솔 진단용
 float g_FpsAccumulator = 0.0f;
 int g_FpsFrames = 0;
+int g_LastDrawCalls = 0;
 
 void RenderScene(void)
 {
-	// 배경이 곧 어둠이다. 밝혀지지 않은 곳은 이 색 그대로 남는다.
-	glClearColor(0.030f, 0.035f, 0.048f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	// 배경이 곧 연기다. Game의 안개 층이 이 위에 바닥 윤곽만 아주 어둡게 얹는다.
+	// 이 값은 Game.cpp의 kWallColor * kFogBrightness와 같다. 그래야 벽이
+	// 배경과 구분되지 않고 연기에 잠긴 검은 덩어리로 보인다.
+	// 후처리의 비네트도 이 색으로 가라앉는다.
+	g_Renderer->ResetDrawCount();
+	g_Post.BeginScene(0.020f, 0.022f, 0.031f);
 
 	g_Game.Render(g_Renderer);
+
+	// 장면(HDR) -> 번짐 · 가장자리 흐림 · 톤 매핑 · 비네트 -> 화면
+	g_Post.EndScene();
+
+	// HUD는 후처리가 끝난 화면 위에. 비네트에 가려지지 않는다.
+	g_Game.RenderHud(g_Renderer);
+	g_LastDrawCalls = g_Renderer->DrawCount();
 
 	if (g_ShotMode && g_ShotElapsed > 4.5f)
 	{
@@ -136,8 +149,17 @@ void Idle(void)
 	if (g_FpsAccumulator >= 1.0f)
 	{
 		std::cout << "fps " << g_FpsFrames
-		          << "  |  그려진 칸 " << g_Game.LastDrawnCells()
-		          << "  |  발밑 밝기 " << g_Game.PlayerBrightness()
+		          << "  |  그리기 " << g_LastDrawCalls
+		          << "  |  빛청크 " << g_Game.LitChunks()
+		          << "  |  맵청크 " << g_Game.MapChunks()
+		          << "  |  기름 " << static_cast<int>(g_Game.Oil() * 100.0f) << "%"
+		          << "  |  울린 종 " << g_Game.RungRegions()
+		          << "  |  동행 " << (g_Game.HasCompanion()
+		                 ? (g_Game.CompanionDarkness() >= 1.0f ? "굳음"
+		                    : (g_Game.CompanionDarkness() > 0.5f ? "위험" : "함께"))
+		                 : "없음")
+		          << "  |  위치 " << static_cast<int>(g_Game.PlayerX())
+		          << ", " << static_cast<int>(g_Game.PlayerY())
 		          << std::endl;
 		g_FpsAccumulator = 0.0f;
 		g_FpsFrames = 0;
@@ -156,6 +178,21 @@ void KeyInput(unsigned char key, int x, int y)
 	{
 		exit(0);
 	}
+
+	// 후처리 전후를 바로 비교할 수 있게 한다.
+	if (key == 'p' || key == 'P')
+	{
+		g_Post.SetEnabled(!g_Post.IsEnabled());
+		std::cout << "후처리 " << (g_Post.IsEnabled() ? "켜짐" : "꺼짐") << "\n";
+		return;
+	}
+	if (key == 't' || key == 'T')
+	{
+		g_Post.settings.toneMapper = 1 - g_Post.settings.toneMapper;
+		std::cout << "톤 매핑: " << (g_Post.settings.toneMapper == 1 ? "ACES" : "어깨 곡선") << "\n";
+		return;
+	}
+
 	g_Input.OnKeyDown(key);
 }
 
@@ -172,6 +209,13 @@ void SpecialKeyInput(int key, int x, int y)
 void SpecialKeyUpInput(int key, int x, int y)
 {
 	g_Input.OnSpecialKeyUp(key);
+}
+
+void Reshape(int width, int height)
+{
+	// 직접 등록하면 GLUT 기본 동작(뷰포트 갱신)이 사라지므로 대신 해 준다.
+	glViewport(0, 0, width, height);
+	g_Post.Resize(width, height);
 }
 
 int main(int argc, char **argv)
@@ -217,13 +261,38 @@ int main(int argc, char **argv)
 
 	g_Game.Initialize(WINDOW_WIDTH, WINDOW_HEIGHT);
 
-	std::cout << "\n  이동: WASD 또는 화살표    종료: ESC\n"
-	          << "  등불이 지나간 자리는 25초 동안 남았다가 마지막 5초에 빠르게 꺼진다.\n\n";
+	// 후처리 버퍼는 창의 논리 크기가 아니라 실제 프레임버퍼 크기로 만든다.
+	GLint viewport[4] = { 0, 0, 0, 0 };
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	const int framebufferWidth = viewport[2] > 0 ? viewport[2] : WINDOW_WIDTH;
+	const int framebufferHeight = viewport[3] > 0 ? viewport[3] : WINDOW_HEIGHT;
+	g_Post.Initialize(g_Renderer, framebufferWidth, framebufferHeight);
+
+	std::cout
+		<< "\n  ── 조작 ─────────────────────────────────\n"
+		<< "   WASD / 화살표   걷는다\n"
+		<< "   Space           말을 건다 · 종을 당긴다(누르고 있을 것)\n"
+		<< "   F               화톳불을 내려놓는다 (3개)\n"
+		<< "   P               후처리 켜기/끄기 (전후 비교)\n"
+		<< "   T               톤 매핑 전환 (어깨 곡선 / ACES)\n"
+		<< "   ESC             끝낸다\n"
+		<< "\n  ── 한 바퀴 ──────────────────────────────\n"
+		<< "   1. 연기 너머로 종탑과 굳은 사람이 희미하게 보인다.\n"
+		<< "      까마귀가 앉아 있으면 아직 침묵한 종탑이다.\n"
+		<< "   2. 굳은 사람 곁에 서서 등불을 2초쯤 비추면 색이 돌아온다.\n"
+		<< "      등불은 내가 선 자리만 밝히므로, 떠나면 다시 식는다.\n"
+		<< "   3. 색이 다 돌아와 머리 위에 불씨가 뜨면 Space로 말을 건다.\n"
+		<< "      그가 당신이 지나온 길을 따라오기 시작한다.\n"
+		<< "      어둠 속에 오래 두면 다시 색이 빠지고 결국 멈춘다.\n"
+		<< "   4. 둘이 함께 종탑에 붙어 Space를 끝까지 누르고 있으면\n"
+		<< "      종이 울리고 그 일대가 영구히 밝아진다.\n"
+		<< "      큰 종은 혼자 울릴 수 없다.\n\n";
 
 	// 키를 누르고 있을 때 GLUT가 KeyDown을 반복 발생시키지 않도록 한다.
 	glutIgnoreKeyRepeat(1);
 
 	glutDisplayFunc(RenderScene);
+	glutReshapeFunc(Reshape);
 	glutIdleFunc(Idle);
 	glutKeyboardFunc(KeyInput);
 	glutKeyboardUpFunc(KeyUpInput);

@@ -19,6 +19,12 @@ public:
 	bool MoveUp() const;
 	bool MoveDown() const;
 
+	// 말을 걸고, 종을 당긴다. 이 게임에서 사람과 관계를 맺는 유일한 키다.
+	bool Interact() const;
+
+	// 화톳불을 내려놓는다.
+	bool PlaceFire() const;
+
 	bool IsPressed(unsigned char key) const;
 
 private:

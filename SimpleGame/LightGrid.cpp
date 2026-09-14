@@ -1,48 +1,81 @@
 #include "stdafx.h"
 #include "LightGrid.h"
 
+#include "World.h"
+
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
-void LightGrid::Initialize(int cols, int rows, float cellSize)
+namespace
 {
-	m_Cols = cols;
-	m_Rows = rows;
-	m_CellSize = cellSize;
-
-	m_Trail.assign(static_cast<size_t>(cols) * rows, 0.0f);
-	m_Live.assign(static_cast<size_t>(cols) * rows, 0.0f);
+	long long PackKey(int chunkX, int chunkY)
+	{
+		return (static_cast<long long>(chunkY) << 32)
+		     | static_cast<long long>(static_cast<unsigned int>(chunkX));
+	}
 }
 
-bool LightGrid::InBounds(int cellX, int cellY) const
+void LightGrid::Configure(float cellSize)
 {
-	return cellX >= 0 && cellX < m_Cols && cellY >= 0 && cellY < m_Rows;
+	m_CellSize = cellSize;
+	m_Chunks.clear();
+}
+
+int LightGrid::CellOf(float world) const
+{
+	return static_cast<int>(std::floor(world / m_CellSize));
+}
+
+const LightGrid::Chunk* LightGrid::Find(int chunkX, int chunkY) const
+{
+	auto found = m_Chunks.find(PackKey(chunkX, chunkY));
+	return found == m_Chunks.end() ? NULL : &found->second;
+}
+
+LightGrid::Chunk& LightGrid::Touch(int chunkX, int chunkY)
+{
+	const long long key = PackKey(chunkX, chunkY);
+
+	auto found = m_Chunks.find(key);
+	if (found != m_Chunks.end())
+	{
+		return found->second;
+	}
+
+	Chunk chunk;
+	chunk.trail.assign(kChunkCells * kChunkCells, 0.0f);
+	chunk.live.assign(kChunkCells * kChunkCells, 0.0f);
+	return m_Chunks.emplace(key, std::move(chunk)).first->second;
 }
 
 void LightGrid::BeginFrame()
 {
-	std::fill(m_Live.begin(), m_Live.end(), 0.0f);
+	for (auto& entry : m_Chunks)
+	{
+		std::fill(entry.second.live.begin(), entry.second.live.end(), 0.0f);
+	}
 }
 
 void LightGrid::AddLight(float worldX, float worldY, float radius, bool leavesTrail)
 {
-	if (radius <= 0.0f || m_Cols == 0)
+	if (radius <= 0.0f)
 	{
 		return;
 	}
 
-	// 광원이 닿는 칸만 훑는다. 전체 격자를 도는 것보다 훨씬 싸다.
-	const int minX = std::max(0, static_cast<int>((worldX - radius) / m_CellSize));
-	const int maxX = std::min(m_Cols - 1, static_cast<int>((worldX + radius) / m_CellSize));
-	const int minY = std::max(0, static_cast<int>((worldY - radius) / m_CellSize));
-	const int maxY = std::min(m_Rows - 1, static_cast<int>((worldY + radius) / m_CellSize));
+	// 광원이 닿는 칸만 훑는다.
+	const int minCellX = CellOf(worldX - radius);
+	const int maxCellX = CellOf(worldX + radius);
+	const int minCellY = CellOf(worldY - radius);
+	const int maxCellY = CellOf(worldY + radius);
 
 	// 안쪽은 균일하게 밝고 바깥으로 갈수록 부드럽게 떨어진다.
 	const float inner = radius * 0.55f;
 
-	for (int cy = minY; cy <= maxY; ++cy)
+	for (int cy = minCellY; cy <= maxCellY; ++cy)
 	{
-		for (int cx = minX; cx <= maxX; ++cx)
+		for (int cx = minCellX; cx <= maxCellX; ++cx)
 		{
 			const float centerX = (cx + 0.5f) * m_CellSize;
 			const float centerY = (cy + 0.5f) * m_CellSize;
@@ -59,17 +92,21 @@ void LightGrid::AddLight(float worldX, float worldY, float radius, bool leavesTr
 			if (distance > inner)
 			{
 				glow = 1.0f - (distance - inner) / (radius - inner);
-				glow = glow * glow * (3.0f - 2.0f * glow);  // smoothstep
+				glow = glow * glow * (3.0f - 2.0f * glow);   // smoothstep
 			}
 
-			const int i = Index(cx, cy);
-			m_Live[i] = std::max(m_Live[i], glow);
+			Chunk& chunk = Touch(World::FloorDiv(cx, kChunkCells),
+			                     World::FloorDiv(cy, kChunkCells));
+			const int index = World::PositiveMod(cy, kChunkCells) * kChunkCells
+			                + World::PositiveMod(cx, kChunkCells);
+
+			chunk.live[index] = std::max(chunk.live[index], glow);
 
 			// 등불이 충분히 비춘 칸만 발자국으로 기억한다.
-			// 광원 가장자리의 희미한 부분까지 기억하면 발자국이 지나치게 굵어진다.
+			// 가장자리의 희미한 부분까지 기억하면 발자국이 지나치게 굵어진다.
 			if (leavesTrail && glow > 0.35f)
 			{
-				m_Trail[i] = 1.0f;
+				chunk.trail[index] = 1.0f;
 			}
 		}
 	}
@@ -83,38 +120,63 @@ void LightGrid::Decay(float deltaSeconds)
 	}
 
 	const float step = deltaSeconds / m_TrailLife;
-	for (float& remaining : m_Trail)
+
+	for (auto it = m_Chunks.begin(); it != m_Chunks.end(); )
 	{
-		if (remaining > 0.0f)
+		Chunk& chunk = it->second;
+		bool anythingLeft = false;
+
+		for (size_t i = 0; i < chunk.trail.size(); ++i)
 		{
-			remaining = std::max(0.0f, remaining - step);
+			if (chunk.trail[i] > 0.0f)
+			{
+				chunk.trail[i] = std::max(0.0f, chunk.trail[i] - step);
+			}
+			if (chunk.trail[i] > 0.0f || chunk.live[i] > 0.0f)
+			{
+				anythingLeft = true;
+			}
 		}
+
+		// 완전히 식었고 지금 비추는 광원도 없으면 버린다.
+		// 이 한 줄 덕분에 무한 맵을 아무리 걸어다녀도 메모리가 늘지 않는다.
+		it = anythingLeft ? std::next(it) : m_Chunks.erase(it);
 	}
 }
 
 float LightGrid::Brightness(int cellX, int cellY) const
 {
-	if (!InBounds(cellX, cellY))
+	const Chunk* chunk = Find(World::FloorDiv(cellX, kChunkCells),
+	                          World::FloorDiv(cellY, kChunkCells));
+	if (chunk == NULL)
 	{
 		return 0.0f;
 	}
 
-	const int i = Index(cellX, cellY);
+	const int index = World::PositiveMod(cellY, kChunkCells) * kChunkCells
+	                + World::PositiveMod(cellX, kChunkCells);
 
 	// 잔여 수명이 m_FadeTail 위에 있는 동안은 밝기를 유지하다가,
 	// 그 아래로 내려가면 빠르게 0으로 떨어진다.
-	const float trail = std::min(m_Trail[i] / m_FadeTail, 1.0f) * m_TrailCeiling;
+	const float trail = std::min(chunk->trail[index] / m_FadeTail, 1.0f) * m_TrailCeiling;
 
-	return std::max(trail, m_Live[i]);
+	return std::max(trail, chunk->live[index]);
 }
 
 float LightGrid::BrightnessAt(float worldX, float worldY) const
 {
-	return Brightness(static_cast<int>(worldX / m_CellSize),
-	                  static_cast<int>(worldY / m_CellSize));
+	return Brightness(CellOf(worldX), CellOf(worldY));
 }
 
 float LightGrid::Glow(int cellX, int cellY) const
 {
-	return InBounds(cellX, cellY) ? m_Live[Index(cellX, cellY)] : 0.0f;
+	const Chunk* chunk = Find(World::FloorDiv(cellX, kChunkCells),
+	                          World::FloorDiv(cellY, kChunkCells));
+	if (chunk == NULL)
+	{
+		return 0.0f;
+	}
+
+	return chunk->live[World::PositiveMod(cellY, kChunkCells) * kChunkCells
+	                 + World::PositiveMod(cellX, kChunkCells)];
 }

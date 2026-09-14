@@ -1,23 +1,31 @@
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 
 //
 // 이 게임의 핵심 자료구조.
 //
-// 조명, 안전 구역, 몬스터 이동 제한, 동료 침식이 전부 이 격자 하나를 조회한다.
+// 조명, 안개를 걷어내는 범위, 오브젝트 가시성, 앞으로 붙을 몬스터 이동 제한과
+// 동료 침식까지 전부 이 격자 하나를 조회한다.
+//
 // 밝기는 두 층으로 나뉜다.
 //
 //   Live  - 이번 프레임에 광원이 실제로 비추고 있는 세기. 매 프레임 다시 계산된다.
 //   Trail - 한 번 밝혀진 칸이 기억하는 잔여 수명. 시간이 지나면 저절로 꺼진다.
 //
-// 최종 밝기는 두 값 중 큰 쪽이다. 플레이어가 지나간 자리가 잠시 밝게 남았다가
-// 서서히 꺼지는 "등불 발자국"이 Trail 층에서 나온다.
+// 최종 밝기는 두 값 중 큰 쪽이다. 등불 발자국이 Trail 층에서 나온다.
+//
+// 맵이 무한하므로 격자도 청크 단위로 필요할 때 만들어진다.
+// 발자국 수명이 유한하기 때문에 살아있는 청크 수는 저절로 한계를 갖는다.
+// 완전히 식은 청크는 버려서 오래 걸어다녀도 메모리가 늘지 않는다.
 //
 class LightGrid
 {
 public:
-	void Initialize(int cols, int rows, float cellSize);
+	static const int kChunkCells = 32;
+
+	void Configure(float cellSize);
 
 	// 프레임 순서: BeginFrame -> AddLight(광원마다) -> Decay
 	void BeginFrame();
@@ -28,17 +36,21 @@ public:
 	float BrightnessAt(float worldX, float worldY) const;
 	float Glow(int cellX, int cellY) const;         // 현재 광원 성분만. 따뜻한 색조용
 
-	int Cols() const { return m_Cols; }
-	int Rows() const { return m_Rows; }
+	int CellOf(float world) const;
 	float CellSize() const { return m_CellSize; }
+	size_t LiveChunks() const { return m_Chunks.size(); }
 
 private:
-	int Index(int cellX, int cellY) const { return cellY * m_Cols + cellX; }
-	bool InBounds(int cellX, int cellY) const;
+	struct Chunk
+	{
+		std::vector<float> trail;   // 잔여 수명 비율 0..1
+		std::vector<float> live;    // 이번 프레임 광원 세기 0..1
+	};
 
-	int m_Cols = 0;
-	int m_Rows = 0;
-	float m_CellSize = 1.0f;
+	const Chunk* Find(int chunkX, int chunkY) const;
+	Chunk& Touch(int chunkX, int chunkY);
+
+	float m_CellSize = 16.0f;
 
 	// 발자국이 완전히 꺼지기까지의 시간. 기획서 기준 20~30초.
 	float m_TrailLife = 25.0f;
@@ -52,6 +64,5 @@ private:
 	// 잔광은 광원이 아니라 기억이므로 확실히 어두워야 한다.
 	float m_TrailCeiling = 0.42f;
 
-	std::vector<float> m_Trail;  // 잔여 수명 비율 0..1
-	std::vector<float> m_Live;   // 이번 프레임 광원 세기 0..1
+	std::unordered_map<long long, Chunk> m_Chunks;
 };
