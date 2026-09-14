@@ -34,6 +34,10 @@ public:
 		// 0.0 = 완전히 굳음, 1.0 = 생기가 돌아옴.
 		// 불을 비추면 차오르고, 등불이 떠나면 다시 식는다.
 		float warmth;
+
+		// 이 구역에 굳어 있는 사람이 누구인지 정하는 값. 좌표로 정해져 늘 같다.
+		// 어떤 대사를 쓸지는 Game이 이 값으로 고른다.
+		unsigned int personSeed;
 	};
 
 	explicit Regions(unsigned int seed = 20260908u);

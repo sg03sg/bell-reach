@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "Renderer.h"
 
+#include "TextRaster.h"
+
 #include <climits>
 #include <cmath>
 #include <cstring>
@@ -37,6 +39,7 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 	//Load shaders
 	m_SolidRectShader = CompileShaders("./Shaders/SolidRect.vs", "./Shaders/SolidRect.fs");
 	m_ShapeShader = CompileShaders("./Shaders/Shape.vs", "./Shaders/Shape.fs");
+	m_TextShader = CompileShaders("./Shaders/Text.vs", "./Shaders/Text.fs");
 	
 	//Create VBOs
 	CreateVertexBufferObjects();
@@ -66,6 +69,25 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 		glUseProgram(m_ShapeShader);
 		glUniform2f(glGetUniformLocation(m_ShapeShader, "u_Viewport"),
 		            static_cast<float>(m_WindowSizeX), static_cast<float>(m_WindowSizeY));
+	}
+
+	if (m_TextShader > 0)
+	{
+		m_TextAttribPosition = glGetAttribLocation(m_TextShader, "a_Position");
+		m_TextLocCenter = glGetUniformLocation(m_TextShader, "u_Center");
+		m_TextLocSize = glGetUniformLocation(m_TextShader, "u_Size");
+		m_TextLocColor = glGetUniformLocation(m_TextShader, "u_Color");
+		m_TextLocReveal = glGetUniformLocation(m_TextShader, "u_Reveal");
+
+		glUseProgram(m_TextShader);
+		glUniform1i(glGetUniformLocation(m_TextShader, "u_Texture"), 0);
+		glUniform2f(glGetUniformLocation(m_TextShader, "u_Viewport"),
+		            static_cast<float>(m_WindowSizeX), static_cast<float>(m_WindowSizeY));
+	}
+	else
+	{
+		// 글자를 못 그려도 게임은 할 수 있다. 대사만 보이지 않는다.
+		std::cout << "글자 셰이더를 불러오지 못해 대사가 표시되지 않습니다.\n";
 	}
 
 	glEnable(GL_BLEND);
@@ -296,6 +318,91 @@ void Renderer::DrawShape(int shape, float x, float y, float halfWidth, float hal
 
 	glDisableVertexAttribArray(m_ShapeAttribPosition);
 	++m_DrawCount;
+}
+
+const Renderer::TextSprite* Renderer::FindOrCreateText(const std::string& utf8, float pixelSize)
+{
+	if (utf8.empty() || m_TextShader == 0)
+	{
+		return NULL;
+	}
+
+	const std::string key = std::to_string(static_cast<int>(pixelSize * 10.0f)) + "|" + utf8;
+
+	auto found = m_TextCache.find(key);
+	if (found != m_TextCache.end())
+	{
+		return found->second.texture != 0 ? &found->second : NULL;
+	}
+
+	TextSprite sprite;
+	std::vector<unsigned char> alpha;
+	int width = 0;
+	int height = 0;
+
+	if (RasterizeTextLine(utf8, pixelSize, alpha, width, height))
+	{
+		glGenTextures(1, &sprite.texture);
+		glBindTexture(GL_TEXTURE_2D, sprite.texture);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);   // 한 줄 폭이 4의 배수가 아니어도 어긋나지 않게
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, alpha.data());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		sprite.width = width;
+		sprite.height = height;
+	}
+
+	// 실패한 문자열도 기록해, 매 프레임 다시 그리려 하지 않는다.
+	const TextSprite& stored = m_TextCache.emplace(key, sprite).first->second;
+	return stored.texture != 0 ? &stored : NULL;
+}
+
+float Renderer::MeasureLabel(const std::string& utf8, float pixelSize)
+{
+	const TextSprite* sprite = FindOrCreateText(utf8, pixelSize);
+	return sprite != NULL ? static_cast<float>(sprite->width) : 0.0f;
+}
+
+float Renderer::DrawLabel(const std::string& utf8, float pixelSize, float left, float top,
+                          const Color& color, float reveal)
+{
+	const TextSprite* sprite = FindOrCreateText(utf8, pixelSize);
+	if (sprite == NULL || reveal <= 0.0f)
+	{
+		return sprite != NULL ? static_cast<float>(sprite->width) : 0.0f;
+	}
+
+	// 픽셀 경계에 맞춰야 글자가 번지지 않는다.
+	const float x = std::floor(left + 0.5f);
+	const float y = std::floor(top + 0.5f);
+
+	float centerX, centerY;
+	GetGLPosition(x + sprite->width * 0.5f, y - sprite->height * 0.5f, &centerX, &centerY);
+
+	glUseProgram(m_TextShader);
+	glUniform2f(m_TextLocCenter, centerX, centerY);
+	glUniform2f(m_TextLocSize, static_cast<float>(sprite->width), static_cast<float>(sprite->height));
+	glUniform4f(m_TextLocColor, color.r, color.g, color.b, color.a);
+	glUniform1f(m_TextLocReveal, reveal);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, sprite->texture);
+
+	glEnableVertexAttribArray(m_TextAttribPosition);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
+	glVertexAttribPointer(m_TextAttribPosition, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	glDisableVertexAttribArray(m_TextAttribPosition);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	++m_DrawCount;
+
+	return static_cast<float>(sprite->width);
 }
 
 void Renderer::DrawCircle(float x, float y, float radius, const Color& color, float emissive, float softness)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <deque>
+#include <string>
 #include <vector>
 
 #include "Companion.h"
@@ -49,6 +50,7 @@ public:
 	float Oil() const { return m_Oil; }
 	int RungRegions() const { return m_Regions.RungRegionCount(); }
 	bool HasCompanion() const { return m_Companion.IsAwake(); }
+	bool IsTalking() const { return m_Dialogue.active; }
 	float CompanionDarkness() const { return m_Companion.Darkness(); }
 	float RingProgress() const { return m_RingProgress; }
 
@@ -70,6 +72,23 @@ private:
 		int index;
 	};
 
+	struct DialoguePage
+	{
+		std::string speaker;
+		std::string text;       // '\n'으로 줄을 나눈다
+		bool fromPlayer;
+	};
+
+	struct DialogueState
+	{
+		bool active = false;
+		int regionX = 0;
+		int regionY = 0;
+		std::vector<DialoguePage> pages;
+		size_t page = 0;
+		float revealed = 0.0f;  // 이번 페이지에서 적힌 글자 수. 한 글자씩 늘어난다
+	};
+
 	// 이미 종을 울린 구역이 주변을 밝히는 범위. 종소리가 닿는 곳까지다.
 	struct Beacon
 	{
@@ -88,10 +107,21 @@ private:
 	float BeaconBrightness(float worldX, float worldY) const;
 	float TotalBrightness(float worldX, float worldY) const;
 
+	void BuildLights();
 	void UpdateSleepers(float deltaSeconds);
 	void HandleInteraction(float deltaSeconds, const Input& input);
-	bool TryWake();
 	void UpdateRinging(float deltaSeconds, bool holding);
+
+	// ── 대화 ──
+	// 생기가 다 돈 사람에게 말을 걸면 대화가 시작되고, 대화가 끝나야 따라나선다.
+	const Regions::Region* FindTalkableSleeper() const;
+	bool TryStartTalk();
+	void StartDialogue(const Regions::Region& region);
+	void UpdateDialogue(float deltaSeconds, const Input& input);
+	void FinishDialogue();
+	void DrawDialogue(Renderer* renderer);
+	void DrawPrompts(Renderer* renderer);
+	void DrawPrompt(Renderer* renderer, const std::string& text, float centerX, float bottomY);
 
 	// 오브젝트는 전부 발밑이 기준점이고 화면 위쪽으로 자란다.
 	void DrawTower(Renderer* renderer, const Regions::Region& region);
@@ -125,6 +155,11 @@ private:
 	int m_FiresLeft = 3;
 
 	float m_RingProgress = 0.0f;
+	bool m_RingAvailable = false;    // 지금 종을 당길 수 있는가. 안내 문구에 쓴다
+	float m_RingTowerX = 0.0f;
+	float m_RingTowerY = 0.0f;
+
+	DialogueState m_Dialogue;
 	bool m_PrevInteract = false;
 	bool m_PrevPlaceFire = false;
 

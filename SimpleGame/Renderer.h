@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <unordered_map>
 
 #include "Dependencies/GL_Platform.h"
 
@@ -51,6 +52,15 @@ public:
 	// 두 점을 잇는 막대. 팔, 밧줄, 장작처럼 방향이 있는 것에 쓴다.
 	void DrawSegment(float x0, float y0, float x1, float y1, float thickness, const Color& color,
 	                 float emissive = 0.0f);
+
+	// ── 글자 ─────────────────────────────────────────────────────
+	// (left, top)을 왼쪽 위로 해서 한 줄을 그린다. 그린 폭(px)을 돌려준다.
+	// 처음 보는 문자열은 운영체제 글꼴 엔진으로 한 번 그려 텍스처로 캐시한다.
+	// reveal은 0~1. 왼쪽부터 그만큼만 보여 한 글자씩 적히는 효과를 낸다.
+	// 이름을 DrawText로 하지 않은 것은 Windows 헤더에 같은 이름의 매크로가 있어서다.
+	float DrawLabel(const std::string& utf8, float pixelSize, float left, float top,
+	                const Color& color, float reveal = 1.0f);
+	float MeasureLabel(const std::string& utf8, float pixelSize);
 
 	// 이번 프레임에 그린 횟수. 진단용.
 	void ResetDrawCount() { m_DrawCount = 0; }
@@ -103,5 +113,23 @@ private:
 	GLint m_ShapeLocSoftness = -1;
 
 	int m_DrawCount = 0;
+
+	// 글자
+	struct TextSprite
+	{
+		GLuint texture = 0;   // 0이면 그리기에 실패한 문자열이다. 다시 시도하지 않는다
+		int width = 0;
+		int height = 0;
+	};
+
+	const TextSprite* FindOrCreateText(const std::string& utf8, float pixelSize);
+
+	GLuint m_TextShader = 0;
+	GLint m_TextAttribPosition = -1;
+	GLint m_TextLocCenter = -1;
+	GLint m_TextLocSize = -1;
+	GLint m_TextLocColor = -1;
+	GLint m_TextLocReveal = -1;
+	std::unordered_map<std::string, TextSprite> m_TextCache;
 };
 

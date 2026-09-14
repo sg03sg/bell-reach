@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Game.h"
 
+#include "Dialogue.h"
 #include "Input.h"
 #include "Renderer.h"
 
@@ -100,6 +101,64 @@ namespace
 	float BeaconRadius()
 	{
 		return Regions::RegionTileSpan() * kTileSize * 0.55f;
+	}
+
+	// ── 대화 ────────────────────────────────────────────────────
+	const float kCharsPerSecond = 28.0f;   // 한 글자씩 적히는 속도
+
+	// UTF-8에서 글자 수를 센다. 이어지는 바이트(10xxxxxx)는 세지 않는다.
+	int CountCharacters(const std::string& text)
+	{
+		int count = 0;
+		for (unsigned char byte : text)
+		{
+			if ((byte & 0xC0) != 0x80 && byte != '\n')
+			{
+				++count;
+			}
+		}
+		return count;
+	}
+
+	std::vector<std::string> SplitLines(const std::string& text)
+	{
+		std::vector<std::string> lines;
+		size_t start = 0;
+		while (true)
+		{
+			const size_t end = text.find('\n', start);
+			lines.push_back(text.substr(start, end == std::string::npos ? std::string::npos : end - start));
+			if (end == std::string::npos)
+			{
+				break;
+			}
+			start = end + 1;
+		}
+		return lines;
+	}
+
+	// 월드 좌표의 차이를 방위로 바꾼다. 월드는 y가 아래로 커지므로 북쪽이 -y다.
+	const char* DirectionName(float dx, float dy)
+	{
+		static const char* const kNames[8] =
+		{
+			"동쪽", "북동쪽", "북쪽", "북서쪽", "서쪽", "남서쪽", "남쪽", "남동쪽"
+		};
+		const float angle = std::atan2(-dy, dx);
+		int sector = static_cast<int>(std::floor(angle / (3.14159265f / 4.0f) + 0.5f));
+		sector = ((sector % 8) + 8) % 8;
+		return kNames[sector];
+	}
+
+	std::string ReplaceAll(std::string text, const std::string& from, const std::string& to)
+	{
+		size_t position = 0;
+		while ((position = text.find(from, position)) != std::string::npos)
+		{
+			text.replace(position, from.size(), to);
+			position += to.size();
+		}
+		return text;
 	}
 }
 
@@ -544,41 +603,120 @@ void Game::UpdateSleepers(float deltaSeconds)
 	}
 }
 
-bool Game::TryWake()
+const Regions::Region* Game::FindTalkableSleeper() const
 {
 	if (m_Companion.IsAwake())
 	{
-		return false;   // 한 번에 한 사람만 데리고 다닌다
+		return NULL;   // 한 번에 한 사람만 데리고 다닌다
 	}
 
 	for (const Regions::Region& region : m_NearbyRegions)
 	{
-		if (region.woken)
-		{
-			continue;
-		}
-
 		// 생기가 다 돌아와야 말을 알아듣는다.
 		// 불을 들이대고 버티는 2초가 이 게임에서 사람을 되찾는 시간이다.
-		if (region.warmth < 1.0f)
+		if (region.woken || region.warmth < 1.0f)
 		{
 			continue;
 		}
 
 		const float sleeperX = TileToWorld(region.sleeperTileX);
 		const float sleeperY = TileToWorld(region.sleeperTileY);
-
-		if (Distance(m_PlayerX, m_PlayerY, sleeperX, sleeperY) > kWakeReach)
+		if (Distance(m_PlayerX, m_PlayerY, sleeperX, sleeperY) <= kWakeReach)
 		{
-			continue;
+			return &region;
 		}
-
-		m_Companion.Wake(sleeperX, sleeperY, region.regionX, region.regionY);
-		m_Regions.MarkWoken(region.regionX, region.regionY);
-		return true;
 	}
 
-	return false;
+	return NULL;
+}
+
+bool Game::TryStartTalk()
+{
+	const Regions::Region* region = FindTalkableSleeper();
+	if (region == NULL)
+	{
+		return false;
+	}
+
+	StartDialogue(*region);
+	return true;
+}
+
+void Game::StartDialogue(const Regions::Region& region)
+{
+	const float sleeperX = TileToWorld(region.sleeperTileX);
+	const float sleeperY = TileToWorld(region.sleeperTileY);
+	const float towerX = TileToWorld(region.towerTileX);
+	const float towerY = TileToWorld(region.towerTileY);
+
+	const DialogueScript& script = WakeScript(static_cast<int>(region.personSeed % WakeScriptCount()));
+	const std::string direction = DirectionName(towerX - sleeperX, towerY - sleeperY);
+
+	m_Dialogue = DialogueState();
+	m_Dialogue.active = true;
+	m_Dialogue.regionX = region.regionX;
+	m_Dialogue.regionY = region.regionY;
+
+	for (int i = 0; i < script.lineCount; ++i)
+	{
+		DialoguePage page;
+		page.fromPlayer = script.lines[i].fromPlayer;
+		page.speaker = page.fromPlayer ? "나" : script.speaker;
+		page.text = ReplaceAll(script.lines[i].text, "{종탑}", direction);
+		m_Dialogue.pages.push_back(page);
+	}
+
+	// 말을 거는 동안에는 멈춰 서서 상대를 바라본다.
+	m_PlayerMoving = false;
+	m_FacingX = (sleeperX >= m_PlayerX) ? 1.0f : -1.0f;
+	m_RingProgress = 0.0f;
+}
+
+void Game::UpdateDialogue(float deltaSeconds, const Input& input)
+{
+	const bool interact = input.Interact();
+	const bool pressed = interact && !m_PrevInteract;
+	m_PrevInteract = interact;
+	m_PrevPlaceFire = input.PlaceFire();   // 대화 중에 누른 F가 끝난 뒤 화톳불로 새지 않게
+
+	const DialoguePage& page = m_Dialogue.pages[m_Dialogue.page];
+	const float total = static_cast<float>(CountCharacters(page.text));
+	m_Dialogue.revealed = std::min(total, m_Dialogue.revealed + deltaSeconds * kCharsPerSecond);
+
+	if (!pressed)
+	{
+		return;
+	}
+
+	// 아직 적히는 중이면 한 번에 끝까지 보여 준다. 다 보였으면 다음 페이지로.
+	if (m_Dialogue.revealed < total)
+	{
+		m_Dialogue.revealed = total;
+		return;
+	}
+
+	++m_Dialogue.page;
+	m_Dialogue.revealed = 0.0f;
+
+	if (m_Dialogue.page >= m_Dialogue.pages.size())
+	{
+		FinishDialogue();
+	}
+}
+
+void Game::FinishDialogue()
+{
+	const Regions::Region region = m_Regions.At(m_Dialogue.regionX, m_Dialogue.regionY);
+	m_Dialogue = DialogueState();
+
+	// 대화가 끝나야 비로소 일어나 따라나선다.
+	// 이제부터는 플레이어가 지나온 궤적을 따라 걷는다.
+	m_Companion.Wake(TileToWorld(region.sleeperTileX), TileToWorld(region.sleeperTileY),
+	                 region.regionX, region.regionY);
+	m_Regions.MarkWoken(region.regionX, region.regionY);
+
+	// 방금 일어난 사람이 같은 프레임에 굳은 형상으로도 그려지지 않도록 갱신한다.
+	RefreshNearbyRegions();
 }
 
 void Game::UpdateRinging(float deltaSeconds, bool holding)
@@ -588,6 +726,7 @@ void Game::UpdateRinging(float deltaSeconds, bool holding)
 	bool canRing = false;
 	int ringingRegionX = 0;
 	int ringingRegionY = 0;
+	m_RingAvailable = false;
 
 	if (m_Companion.IsAwake() && !m_Companion.IsFrozenAgain())
 	{
@@ -607,6 +746,9 @@ void Game::UpdateRinging(float deltaSeconds, bool holding)
 				canRing = true;
 				ringingRegionX = region.regionX;
 				ringingRegionY = region.regionY;
+				m_RingAvailable = true;
+				m_RingTowerX = towerX;
+				m_RingTowerY = towerY;
 				break;
 			}
 		}
@@ -638,10 +780,11 @@ void Game::HandleInteraction(float deltaSeconds, const Input& input)
 	const bool interact = input.Interact();
 	const bool interactPressed = interact && !m_PrevInteract;
 
-	if (interactPressed && TryWake())
+	if (interactPressed && TryStartTalk())
 	{
-		// 방금 깨운 사람이 같은 프레임에 굳은 형상으로도 그려지지 않도록 갱신한다.
-		RefreshNearbyRegions();
+		m_PrevInteract = interact;
+		m_PrevPlaceFire = input.PlaceFire();
+		return;   // 대화가 열린 프레임에는 종을 당기거나 화톳불을 놓지 않는다
 	}
 
 	UpdateRinging(deltaSeconds, interact);
@@ -657,9 +800,35 @@ void Game::HandleInteraction(float deltaSeconds, const Input& input)
 	m_PrevPlaceFire = placeFire;
 }
 
+void Game::BuildLights()
+{
+	m_Light.BeginFrame();
+
+	// 기름이 줄면 반경도 줄어든다. 꺼지기 전에 먼저 세계가 좁아진다.
+	if (m_Oil > 0.0f)
+	{
+		const float radius = kLanternRadius * (0.35f + 0.65f * m_Oil);
+		m_Light.AddLight(m_PlayerX, m_PlayerY, radius, true);
+	}
+
+	for (const StaticLight& fire : m_Fires)
+	{
+		m_Light.AddLight(fire.x, fire.y, fire.radius, false);
+	}
+}
+
 void Game::Update(float deltaSeconds, const Input& input)
 {
 	m_Time += deltaSeconds;
+
+	// 대화 중에는 세계가 멈춘다. 기름도 줄지 않고, 발자국도 식지 않고,
+	// 굳은 사람의 생기도 빠지지 않는다. 불꽃과 까마귀는 계속 움직인다.
+	if (m_Dialogue.active)
+	{
+		UpdateDialogue(deltaSeconds, input);
+		BuildLights();
+		return;
+	}
 
 	MovePlayer(deltaSeconds, input);
 	RecordPath();
@@ -682,19 +851,7 @@ void Game::Update(float deltaSeconds, const Input& input)
 		m_Oil = std::max(0.0f, m_Oil - deltaSeconds / kOilSeconds);
 	}
 
-	m_Light.BeginFrame();
-
-	// 기름이 줄면 반경도 줄어든다. 꺼지기 전에 먼저 세계가 좁아진다.
-	if (m_Oil > 0.0f)
-	{
-		const float radius = kLanternRadius * (0.35f + 0.65f * m_Oil);
-		m_Light.AddLight(m_PlayerX, m_PlayerY, radius, true);
-	}
-
-	for (const StaticLight& fire : m_Fires)
-	{
-		m_Light.AddLight(fire.x, fire.y, fire.radius, false);
-	}
+	BuildLights();
 
 	// 여기서부터 밝기 질의는 이번 프레임의 등불을 반영한다.
 	// 굳은 사람과 상호작용 판정이 한 프레임 늦지 않도록 조명을 먼저 세운다.
@@ -828,7 +985,9 @@ void Game::DrawSleeper(Renderer* renderer, const Regions::Region& region)
 	look.skin = Blend(kFrozen, kLiving, warmth);
 	look.hair = Blend(kFrozen, kHair, warmth);
 	look.hooded = false;
-	look.posture = warmth * 0.85f;
+	const bool talking = m_Dialogue.active
+	                  && m_Dialogue.regionX == region.regionX && m_Dialogue.regionY == region.regionY;
+	look.posture = talking ? 1.0f : warmth * 0.85f;
 	look.facing = (m_PlayerX >= worldX) ? 1.0f : -1.0f;
 	look.bob = 0.0f;
 	DrawFigure(renderer, x, y, look);
@@ -928,6 +1087,116 @@ void Game::DrawHud(Renderer* renderer)
 		renderer->DrawCircle(faceX, bottom + 1.0f, 7.5f, Tint(kCrow, 1.0f, 0.6f));
 		renderer->DrawCircle(faceX, bottom + 1.0f, 5.5f, Blend(kFrozen, kLiving, alive));
 		renderer->DrawEllipse(faceX - 0.8f, bottom + 3.8f, 5.6f, 3.0f, Blend(kFrozen, kHair, alive));
+	}
+
+	if (m_Dialogue.active)
+	{
+		DrawDialogue(renderer);
+	}
+	else
+	{
+		DrawPrompts(renderer);
+	}
+}
+
+void Game::DrawPrompt(Renderer* renderer, const std::string& text, float centerX, float bottomY)
+{
+	// 머리 위에 뜨는 짧은 안내. 바탕을 깔아 밝은 곳에서도 읽히게 한다.
+	const float size = 15.0f;
+	const float width = renderer->MeasureLabel(text, size);
+	if (width <= 0.0f)
+	{
+		return;
+	}
+
+	const float bob = std::sin(m_Time * 3.0f) * 1.0f;
+	const float centerY = bottomY + 13.0f + bob;
+	const Color backing = { 0.02f, 0.022f, 0.03f, 0.78f };
+	const Color edge = { kFlame[0], kFlame[1], kFlame[2], 0.35f };
+
+	renderer->DrawRoundRect(centerX, centerY, width + 20.0f, 27.0f, 13.5f, edge);
+	renderer->DrawRoundRect(centerX, centerY, width + 18.0f, 25.0f, 12.5f, backing);
+	renderer->DrawLabel(text, size, centerX - width * 0.5f, centerY + 11.0f,
+	                    Tint(kFlameCore, 0.95f));
+}
+
+void Game::DrawPrompts(Renderer* renderer)
+{
+	// 말을 걸 수 있는 사람
+	if (const Regions::Region* region = FindTalkableSleeper())
+	{
+		DrawPrompt(renderer, "Space  말 걸기",
+		           ToRenderX(TileToWorld(region->sleeperTileX)),
+		           ToRenderY(TileToWorld(region->sleeperTileY)) + 50.0f);
+	}
+
+	// 함께 종을 당길 수 있는 종탑
+	if (m_RingAvailable)
+	{
+		DrawPrompt(renderer, m_RingProgress > 0.0f ? "놓지 마세요" : "Space 누르고 있기  종 울리기",
+		           ToRenderX(m_RingTowerX), ToRenderY(m_RingTowerY) + 108.0f);
+	}
+
+	// 다시 굳어버린 동행자
+	if (m_Companion.IsFrozenAgain())
+	{
+		DrawPrompt(renderer, "불을 비춰 다시 깨우기",
+		           ToRenderX(m_Companion.X()), ToRenderY(m_Companion.Y()) + 40.0f);
+	}
+}
+
+void Game::DrawDialogue(Renderer* renderer)
+{
+	const DialoguePage& page = m_Dialogue.pages[m_Dialogue.page];
+
+	// 화면 아래, HUD 줄 바로 위에 대화창을 둔다.
+	const float panelWidth = 860.0f;
+	const float panelHeight = 128.0f;
+	const float centerY = -m_WindowHeight * 0.5f + 44.0f + panelHeight * 0.5f;
+	const float left = -panelWidth * 0.5f + 30.0f;
+	const float top = centerY + panelHeight * 0.5f;
+
+	const Color rim = { kBronze[0], kBronze[1], kBronze[2], 0.38f };
+	const Color panel = { 0.022f, 0.025f, 0.036f, 0.93f };
+	renderer->DrawRoundRect(0.0f, centerY, panelWidth + 4.0f, panelHeight + 4.0f, 11.0f, rim);
+	renderer->DrawRoundRect(0.0f, centerY, panelWidth, panelHeight, 9.0f, panel);
+
+	// 말하는 사람. 깨어난 사람의 이름은 불빛 색, 내 대사는 가라앉은 색.
+	const Color nameColor = page.fromPlayer ? Tint(kStone, 1.9f) : Tint(kFlame);
+	renderer->DrawRoundRect(left + 3.0f, top - 24.0f, 6.0f, 6.0f, 1.0f, nameColor, 0.7854f);
+	renderer->DrawLabel(page.speaker, 17.0f, left + 16.0f, top - 13.0f, nameColor);
+
+	// 본문. 줄마다 앞 줄이 다 적힌 뒤에 적히기 시작한다.
+	const Color textColor = page.fromPlayer
+		? Color{ 0.72f, 0.74f, 0.78f, 1.0f }
+		: Color{ 0.90f, 0.87f, 0.80f, 1.0f };
+
+	const std::vector<std::string> lines = SplitLines(page.text);
+	float before = 0.0f;
+	for (size_t i = 0; i < lines.size(); ++i)
+	{
+		const float count = static_cast<float>(CountCharacters(lines[i]));
+		const float reveal = (count > 0.0f)
+			? std::max(0.0f, std::min(1.0f, (m_Dialogue.revealed - before) / count))
+			: 1.0f;
+		renderer->DrawLabel(lines[i], 21.0f, left, top - 44.0f - i * 32.0f, textColor, reveal);
+		before += count;
+	}
+
+	// 다 적혔으면 다음으로 넘기라는 표시가 깜빡인다. 마지막 페이지는 따라나선다는 뜻이다.
+	if (m_Dialogue.revealed >= static_cast<float>(CountCharacters(page.text)))
+	{
+		const bool last = m_Dialogue.page + 1 >= m_Dialogue.pages.size();
+		const float blink = 0.55f + 0.45f * std::sin(m_Time * 5.0f);
+		const float right = panelWidth * 0.5f - 30.0f;
+		const float bottom = centerY - panelHeight * 0.5f + 20.0f;
+		const std::string hint = last ? "Space  함께 가기" : "Space";
+		const float hintWidth = renderer->MeasureLabel(hint, 14.0f);
+
+		renderer->DrawLabel(hint, 14.0f, right - hintWidth - 16.0f, bottom + 9.0f,
+		                    Tint(kStone, 1.6f, blink));
+		renderer->DrawTriangle(right - 4.0f, bottom + 1.0f + blink * 2.0f, 10.0f, 8.0f,
+		                       Tint(kFlame, 1.0f, blink), 3.14159265f);
 	}
 }
 

@@ -6,7 +6,7 @@
 #   make release  optimized build
 #   make clean    remove build output
 #
-# Uses only the system OpenGL and GLUT frameworks - nothing to install.
+# Uses only system frameworks (OpenGL, GLUT, CoreText) - nothing to install.
 # ---------------------------------------------------------------------------
 
 CXX      := clang++
@@ -19,7 +19,8 @@ OBJECTS  := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD)/%.o,$(SOURCES))
 DEPS     := $(OBJECTS:.o=.d)
 
 CXXFLAGS := -std=c++17 -I$(SRC_DIR) -Wall -Wno-deprecated-declarations -MMD -MP
-LDFLAGS  := -framework OpenGL -framework GLUT
+LDFLAGS  := -framework OpenGL -framework GLUT \
+            -framework CoreText -framework CoreGraphics -framework CoreFoundation
 
 CONFIG   ?= debug
 ifeq ($(CONFIG),release)
