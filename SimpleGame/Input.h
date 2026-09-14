@@ -22,6 +22,9 @@ public:
 	// 말을 걸고, 종을 당긴다. 이 게임에서 사람과 관계를 맺는 유일한 키다.
 	bool Interact() const;
 
+	// 가까운 적에게 불씨를 쏜다. 누르고 있으면 쿨타임마다 계속 쏜다.
+	bool Attack() const;
+
 	// 화톳불을 내려놓는다.
 	bool PlaceFire() const;
 

@@ -12,7 +12,9 @@ but WITHOUT ANY WARRANTY.
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include "Dependencies/GL_Platform.h"
 #include "Dependencies/GLUT_Platform.h"
 
@@ -98,9 +100,7 @@ int g_LastDrawCalls = 0;
 
 void RenderScene(void)
 {
-	// 배경이 곧 연기다. Game의 안개 층이 이 위에 바닥 윤곽만 아주 어둡게 얹는다.
-	// 이 값은 Game.cpp의 kWallColor * kFogBrightness와 같다. 그래야 벽이
-	// 배경과 구분되지 않고 연기에 잠긴 검은 덩어리로 보인다.
+	// 배경이 곧 연기다. Game의 안개 층이 이 위에 땅을 아주 어둡게 깐다.
 	// 후처리의 비네트도 이 색으로 가라앉는다.
 	g_Renderer->ResetDrawCount();
 	g_Post.BeginScene(0.020f, 0.022f, 0.031f);
@@ -153,6 +153,9 @@ void Idle(void)
 		          << "  |  빛청크 " << g_Game.LitChunks()
 		          << "  |  맵청크 " << g_Game.MapChunks()
 		          << "  |  기름 " << static_cast<int>(g_Game.Oil() * 100.0f) << "%"
+		          << "  |  Lv " << g_Game.Level()
+		          << "  |  체력 " << static_cast<int>(g_Game.Health())
+		          << "  |  적 " << g_Game.EnemyCount()
 		          << "  |  울린 종 " << g_Game.RungRegions()
 		          << "  |  동행 " << (g_Game.HasCompanion()
 		                 ? (g_Game.CompanionDarkness() >= 1.0f ? "굳음"
@@ -184,6 +187,12 @@ void KeyInput(unsigned char key, int x, int y)
 	{
 		g_Post.SetEnabled(!g_Post.IsEnabled());
 		std::cout << "후처리 " << (g_Post.IsEnabled() ? "켜짐" : "꺼짐") << "\n";
+		return;
+	}
+	if (key == 'm' || key == 'M')
+	{
+		g_Game.ToggleMinimap();
+		std::cout << "미니맵 " << (g_Game.IsMinimapVisible() ? "켜짐" : "꺼짐") << "\n";
 		return;
 	}
 	if (key == 't' || key == 'T')
@@ -220,12 +229,19 @@ void Reshape(int width, int height)
 
 int main(int argc, char **argv)
 {
+	// 섬은 실행할 때마다 새로 만들어진다. 같은 섬을 다시 보고 싶으면 --seed로 씨앗을 준다.
+	unsigned int seed = static_cast<unsigned int>(std::time(NULL)) ^ static_cast<unsigned int>(std::clock() * 2654435761u);
+
 	for (int i = 1; i < argc - 1; ++i)
 	{
 		if (std::strcmp(argv[i], "--shot") == 0)
 		{
 			g_ShotMode = true;
 			g_ShotPath = argv[i + 1];
+		}
+		else if (std::strcmp(argv[i], "--seed") == 0)
+		{
+			seed = static_cast<unsigned int>(std::strtoul(argv[i + 1], NULL, 10));
 		}
 	}
 
@@ -259,7 +275,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	g_Game.Initialize(WINDOW_WIDTH, WINDOW_HEIGHT);
+	g_Game.Initialize(WINDOW_WIDTH, WINDOW_HEIGHT, seed);
+	std::cout << "섬의 씨앗: " << seed << "   (같은 섬을 다시 만들려면 --seed " << seed << ")\n";
 
 	// 후처리 버퍼는 창의 논리 크기가 아니라 실제 프레임버퍼 크기로 만든다.
 	GLint viewport[4] = { 0, 0, 0, 0 };
@@ -271,8 +288,10 @@ int main(int argc, char **argv)
 	std::cout
 		<< "\n  ── 조작 ─────────────────────────────────\n"
 		<< "   WASD / 화살표   걷는다\n"
+		<< "   F               불씨를 쏜다 — 가까운 적을 저절로 노린다 (누르고 있으면 연사)\n"
 		<< "   Space           말을 건다 · 대사 넘기기 · 종을 당긴다(누르고 있을 것)\n"
-		<< "   F               화톳불을 내려놓는다 (3개)\n"
+		<< "   E               화톳불을 내려놓는다 (3개)\n"
+		<< "   M               미니맵 켜기/끄기\n"
 		<< "   P               후처리 켜기/끄기 (전후 비교)\n"
 		<< "   T               톤 매핑 전환 (어깨 곡선 / ACES)\n"
 		<< "   ESC             끝낸다\n"
@@ -287,7 +306,16 @@ int main(int argc, char **argv)
 		<< "      어둠 속에 오래 두면 다시 색이 빠지고 결국 멈춘다.\n"
 		<< "   4. 둘이 함께 종탑에 붙어 Space를 끝까지 누르고 있으면\n"
 		<< "      종이 울리고 그 일대가 영구히 밝아진다.\n"
-		<< "      큰 종은 혼자 울릴 수 없다.\n\n";
+		<< "      큰 종은 혼자 울릴 수 없다.\n"
+		<< "\n  ── 싸움 ──────────────────────────────────\n"
+		<< "   · 어둠 속에서 그림자들이 나타난다. 불빛 안에서는 발이 느려지고,\n"
+		<< "     종을 울린 곳에는 들어오지 못한다.\n"
+		<< "   · 쓰러진 자리에 떨어진 영혼석을 주우면 레벨이 오른다.\n"
+		<< "     레벨이 오르면 체력, 불씨의 위력과 연사 속도, 사거리가 늘고\n"
+		<< "     5레벨마다 불씨가 하나씩 더 나간다.\n"
+		<< "   · 강화석은 무기를, 회복약은 체력을, 자석은 10초 동안 주변의 것을 모두 끌어온다.\n"
+		<< "   · 종탑 앞의 종탑지기를 쓰러뜨려야 종을 울릴 수 있다.\n"
+		<< "     종탑지기가 흩뿌리는 어둠 구슬은 집 벽과 나무에 막힌다.\n\n";
 
 	// 키를 누르고 있을 때 GLUT가 KeyDown을 반복 발생시키지 않도록 한다.
 	glutIgnoreKeyRepeat(1);

@@ -3,6 +3,10 @@
 
 #include "World.h"
 
+// 구역 하나가 마을 하나다. 두 값이 어긋나면 종탑이 광장 밖에 서게 된다.
+static_assert(Regions::kRegionChunks == World::kVillageChunks,
+              "Regions::kRegionChunks must match World::kVillageChunks");
+
 namespace
 {
 	unsigned int HashCoords(int x, int y, unsigned int seed)
@@ -83,6 +87,7 @@ Regions::Region Regions::At(int regionX, int regionY) const
 	const State* state = FindState(regionX, regionY);
 	region.rung   = state != NULL && (state->flags & kFlagRung) != 0;
 	region.woken  = state != NULL && (state->flags & kFlagWoken) != 0;
+	region.wardenDefeated = state != NULL && (state->flags & kFlagWardenDefeated) != 0;
 	region.warmth = state != NULL ? state->warmth : 0.0f;
 	region.personSeed = hash >> 8;   // 굳은 사람 자리를 고른 하위 비트와 겹치지 않게
 
@@ -114,6 +119,26 @@ void Regions::MarkRung(int regionX, int regionY)
 	{
 		state.flags |= kFlagRung;
 		++m_RungCount;
+	}
+}
+
+void Regions::MarkWardenDefeated(int regionX, int regionY)
+{
+	m_States[PackKey(regionX, regionY)].flags |= kFlagWardenDefeated;
+}
+
+void Regions::CollectRung(std::vector<Region>& out) const
+{
+	for (const auto& entry : m_States)
+	{
+		if ((entry.second.flags & kFlagRung) == 0)
+		{
+			continue;
+		}
+		// 키에서 구역 좌표를 되돌린다 (PackKey의 역)
+		const int regionY = static_cast<int>(entry.first >> 32);
+		const int regionX = static_cast<int>(static_cast<unsigned int>(entry.first & 0xFFFFFFFFll));
+		out.push_back(At(regionX, regionY));
 	}
 }
 

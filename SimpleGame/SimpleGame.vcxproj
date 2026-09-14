@@ -160,11 +160,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Dialogue.h" />
+    <ClInclude Include="ExploredMap.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="Input.h" />
     <ClInclude Include="LightGrid.h" />
+    <ClInclude Include="Combat.h" />
     <ClInclude Include="Companion.h" />
     <ClInclude Include="PostProcess.h" />
+    <ClInclude Include="Progression.h" />
     <ClInclude Include="Regions.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="World.h" />
@@ -174,11 +177,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Dialogue.cpp" />
+    <ClCompile Include="ExploredMap.cpp" />
     <ClCompile Include="Game.cpp" />
+    <ClCompile Include="GameCombat.cpp" />
     <ClCompile Include="Input.cpp" />
     <ClCompile Include="LightGrid.cpp" />
+    <ClCompile Include="Combat.cpp" />
     <ClCompile Include="Companion.cpp" />
     <ClCompile Include="PostProcess.cpp" />
+    <ClCompile Include="Progression.cpp" />
     <ClCompile Include="Regions.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="World.cpp" />

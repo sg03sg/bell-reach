@@ -63,7 +63,12 @@ bool Input::Interact() const
 	return m_Ascii[' '];
 }
 
-bool Input::PlaceFire() const
+bool Input::Attack() const
 {
 	return m_Ascii['f'];
+}
+
+bool Input::PlaceFire() const
+{
+	return m_Ascii['e'];
 }

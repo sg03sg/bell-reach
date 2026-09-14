@@ -62,6 +62,18 @@ public:
 	                const Color& color, float reveal = 1.0f);
 	float MeasureLabel(const std::string& utf8, float pixelSize);
 
+	// ── 이미지 ───────────────────────────────────────────────────
+	// CPU에서 만든 RGBA 픽셀을 텍스처로 올려 그린다. 미니맵처럼 수천 칸을
+	// 사각형으로 하나씩 그리면 너무 비싼 것을 한 장으로 그리는 데 쓴다.
+	// 픽셀은 0행이 맨 위다. 확대해도 칸이 번지지 않게 가장 가까운 픽셀을 읽는다.
+	GLuint CreateImage(int width, int height);
+	void UpdateImage(GLuint image, int width, int height, const unsigned char* rgba);
+	void DrawImage(GLuint image, float left, float top, float width, float height, float alpha = 1.0f);
+
+	// 이 사각형 밖에는 그려지지 않게 한다. 좌표는 다른 그리기와 같다(화면 중앙 원점, y 위쪽).
+	void SetClip(float left, float bottom, float width, float height);
+	void ClearClip();
+
 	// 이번 프레임에 그린 횟수. 진단용.
 	void ResetDrawCount() { m_DrawCount = 0; }
 	int DrawCount() const { return m_DrawCount; }
@@ -130,6 +142,7 @@ private:
 	GLint m_TextLocSize = -1;
 	GLint m_TextLocColor = -1;
 	GLint m_TextLocReveal = -1;
+	GLint m_TextLocMode = -1;     // 0 = 글자(알파 마스크), 1 = 이미지(RGBA)
 	std::unordered_map<std::string, TextSprite> m_TextCache;
 };
 

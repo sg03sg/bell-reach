@@ -30,6 +30,7 @@ public:
 		int sleeperTileY;
 		bool rung;      // 종을 울렸는가
 		bool woken;     // 굳은 사람이 일어나 따라나섰는가
+		bool wardenDefeated;   // 종탑지기를 쓰러뜨렸는가. 쓰러뜨려야 종을 울릴 수 있다
 
 		// 0.0 = 완전히 굳음, 1.0 = 생기가 돌아옴.
 		// 불을 비추면 차오르고, 등불이 떠나면 다시 식는다.
@@ -50,6 +51,10 @@ public:
 	                        std::vector<Region>& out) const;
 
 	void MarkRung(int regionX, int regionY);
+	void MarkWardenDefeated(int regionX, int regionY);
+
+	// 종을 울린 구역을 모두 모은다. 쓰러졌을 때 돌아갈 곳을 찾는 데 쓴다.
+	void CollectRung(std::vector<Region>& out) const;
 	void MarkWoken(int regionX, int regionY);
 	void SetWarmth(int regionX, int regionY, float warmth);
 
@@ -62,7 +67,8 @@ private:
 	enum Flags
 	{
 		kFlagRung = 1,
-		kFlagWoken = 2
+		kFlagWoken = 2,
+		kFlagWardenDefeated = 4
 	};
 
 	struct State

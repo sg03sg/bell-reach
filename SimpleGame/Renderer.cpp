@@ -78,6 +78,7 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 		m_TextLocSize = glGetUniformLocation(m_TextShader, "u_Size");
 		m_TextLocColor = glGetUniformLocation(m_TextShader, "u_Color");
 		m_TextLocReveal = glGetUniformLocation(m_TextShader, "u_Reveal");
+		m_TextLocMode = glGetUniformLocation(m_TextShader, "u_Mode");
 
 		glUseProgram(m_TextShader);
 		glUniform1i(glGetUniformLocation(m_TextShader, "u_Texture"), 0);
@@ -388,6 +389,7 @@ float Renderer::DrawLabel(const std::string& utf8, float pixelSize, float left, 
 	glUniform2f(m_TextLocSize, static_cast<float>(sprite->width), static_cast<float>(sprite->height));
 	glUniform4f(m_TextLocColor, color.r, color.g, color.b, color.a);
 	glUniform1f(m_TextLocReveal, reveal);
+	glUniform1i(m_TextLocMode, 0);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, sprite->texture);
@@ -403,6 +405,86 @@ float Renderer::DrawLabel(const std::string& utf8, float pixelSize, float left, 
 	++m_DrawCount;
 
 	return static_cast<float>(sprite->width);
+}
+
+GLuint Renderer::CreateImage(int width, int height)
+{
+	GLuint image = 0;
+	glGenTextures(1, &image);
+	glBindTexture(GL_TEXTURE_2D, image);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	return image;
+}
+
+void Renderer::UpdateImage(GLuint image, int width, int height, const unsigned char* rgba)
+{
+	if (image == 0)
+	{
+		return;
+	}
+	glBindTexture(GL_TEXTURE_2D, image);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Renderer::DrawImage(GLuint image, float left, float top, float width, float height, float alpha)
+{
+	if (image == 0 || m_TextShader == 0)
+	{
+		return;
+	}
+
+	float centerX, centerY;
+	GetGLPosition(left + width * 0.5f, top - height * 0.5f, &centerX, &centerY);
+
+	glUseProgram(m_TextShader);
+	glUniform2f(m_TextLocCenter, centerX, centerY);
+	glUniform2f(m_TextLocSize, width, height);
+	glUniform4f(m_TextLocColor, 1.0f, 1.0f, 1.0f, alpha);
+	glUniform1f(m_TextLocReveal, 1.0f);
+	glUniform1i(m_TextLocMode, 1);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, image);
+
+	glEnableVertexAttribArray(m_TextAttribPosition);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
+	glVertexAttribPointer(m_TextAttribPosition, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	glDisableVertexAttribArray(m_TextAttribPosition);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	++m_DrawCount;
+}
+
+void Renderer::SetClip(float left, float bottom, float width, float height)
+{
+	// 가위 테스트는 프레임버퍼 픽셀 단위이고 왼쪽 아래가 원점이다.
+	// 창의 논리 크기와 실제 프레임버퍼 크기가 다를 수 있어 뷰포트로 환산한다.
+	GLint viewport[4] = { 0, 0, 0, 0 };
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	const float scaleX = static_cast<float>(viewport[2]) / static_cast<float>(m_WindowSizeX);
+	const float scaleY = static_cast<float>(viewport[3]) / static_cast<float>(m_WindowSizeY);
+
+	const float pixelLeft = (left + m_WindowSizeX * 0.5f) * scaleX;
+	const float pixelBottom = (bottom + m_WindowSizeY * 0.5f) * scaleY;
+
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(static_cast<GLint>(std::floor(pixelLeft)), static_cast<GLint>(std::floor(pixelBottom)),
+	          static_cast<GLsizei>(std::ceil(width * scaleX)), static_cast<GLsizei>(std::ceil(height * scaleY)));
+}
+
+void Renderer::ClearClip()
+{
+	// 켜둔 채로 다음 프레임에 넘어가면 후처리 버퍼를 비울 때도 잘린다.
+	glDisable(GL_SCISSOR_TEST);
 }
 
 void Renderer::DrawCircle(float x, float y, float radius, const Color& color, float emissive, float softness)
