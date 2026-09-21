@@ -66,6 +66,10 @@ public:
 	void BeginScene(float clearR, float clearG, float clearB);
 	void EndScene();
 
+	// 이번 프레임에 후처리가 그린 횟수. 끄면 0이 되므로 후처리의 값을 바로 알 수 있다.
+	void ResetDrawCount() { m_DrawCount = 0; }
+	int DrawCount() const { return m_DrawCount; }
+
 	void SetEnabled(bool enabled) { m_Enabled = enabled; }
 	bool IsEnabled() const { return m_Enabled && m_Available; }
 	bool IsAvailable() const { return m_Available; }
@@ -118,6 +122,8 @@ private:
 	Pass m_BloomDown;
 	Pass m_BloomUp;
 	Pass m_Composite;
+
+	int m_DrawCount = 0;
 
 	GLuint m_QuadVao = 0;
 	GLuint m_QuadVbo = 0;

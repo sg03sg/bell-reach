@@ -22,6 +22,7 @@ but WITHOUT ANY WARRANTY.
 #include "Game.h"
 #include "Input.h"
 #include "PostProcess.h"
+#include "Profiler.h"
 
 // 맵이 30 x 20 타일, 타일 한 칸이 32픽셀이므로 창 크기가 결정된다.
 const int WINDOW_WIDTH = 960;
@@ -93,26 +94,52 @@ void DriveScriptedWalk(float elapsed)
 	}
 }
 
-// 콘솔 진단용
-float g_FpsAccumulator = 0.0f;
-int g_FpsFrames = 0;
-int g_LastDrawCalls = 0;
+// ── 콘솔 진단 ──
+// 프레임에 걸린 시간과 그린 횟수를 모아 1초마다 한 줄로 찍는다.
+Profiler g_Profiler;
+Profiler::Frame g_FrameStats;
 
 void RenderScene(void)
 {
 	// 배경이 곧 연기다. Game의 안개 층이 이 위에 땅을 아주 어둡게 깐다.
 	// 후처리의 비네트도 이 색으로 가라앉는다.
 	g_Renderer->ResetDrawCount();
+	g_Post.ResetDrawCount();
+
 	g_Post.BeginScene(0.020f, 0.022f, 0.031f);
 
 	g_Game.Render(g_Renderer);
+	g_FrameStats.sceneDrawCalls = g_Renderer->DrawCount();
 
 	// 장면(HDR) -> 번짐 · 가장자리 흐림 · 톤 매핑 · 비네트 -> 화면
 	g_Post.EndScene();
+	g_FrameStats.postDrawCalls = g_Post.DrawCount();
 
 	// HUD는 후처리가 끝난 화면 위에. 비네트에 가려지지 않는다.
 	g_Game.RenderHud(g_Renderer);
-	g_LastDrawCalls = g_Renderer->DrawCount();
+	g_FrameStats.hudDrawCalls = g_Renderer->DrawCount() - g_FrameStats.sceneDrawCalls;
+
+	// 이 프레임에 걸린 시간은 Idle이 재어 둔 값이다. 그리기가 끝난 지금 함께 기록한다.
+	g_Profiler.AddFrame(g_FrameStats);
+	if (g_Profiler.ShouldReport())
+	{
+		std::cout << g_Profiler.Report() << "\n"
+		          << "[상태] Lv " << g_Game.Level()
+		          << "  체력 " << static_cast<int>(g_Game.Health())
+		          << "  적 " << g_Game.EnemyCount()
+		          << "  액터 " << g_Game.ActorCount()
+		          << "  |  빛청크 " << g_Game.LitChunks()
+		          << "  맵청크 " << g_Game.MapChunks()
+		          << "  |  기름 " << static_cast<int>(g_Game.Oil() * 100.0f) << "%"
+		          << "  울린 종 " << g_Game.RungRegions()
+		          << "  동행 " << (g_Game.HasCompanion()
+		                 ? (g_Game.CompanionDarkness() >= 1.0f ? "굳음"
+		                    : (g_Game.CompanionDarkness() > 0.5f ? "위험" : "함께"))
+		                 : "없음")
+		          << "  |  위치 " << static_cast<int>(g_Game.PlayerX())
+		          << ", " << static_cast<int>(g_Game.PlayerY())
+		          << std::endl;
+	}
 
 	if (g_ShotMode && g_ShotElapsed > 4.5f)
 	{
@@ -126,11 +153,15 @@ void RenderScene(void)
 void Idle(void)
 {
 	const int nowMs = glutGet(GLUT_ELAPSED_TIME);
-	float deltaSeconds = (nowMs - g_PreviousTimeMs) / 1000.0f;
+	const float measuredSeconds = (nowMs - g_PreviousTimeMs) / 1000.0f;
 	g_PreviousTimeMs = nowMs;
 
+	// 프로파일러에는 자르기 전의 값을 준다. 잘라서 넘기면 진짜 튄 프레임이 감춰진다.
+	g_FrameStats.seconds = measuredSeconds;
+
 	// 창을 옮기거나 디버거에 멈춰 있다가 돌아오면 큰 값이 튄다.
-	// 그대로 두면 플레이어가 벽을 뚫고 순간이동한다.
+	// 그대로 두면 플레이어가 벽을 뚫고 순간이동하므로, 게임에는 자른 값을 준다.
+	float deltaSeconds = measuredSeconds;
 	if (deltaSeconds > 0.1f)
 	{
 		deltaSeconds = 0.1f;
@@ -143,30 +174,6 @@ void Idle(void)
 	}
 
 	g_Game.Update(deltaSeconds, g_Input);
-
-	g_FpsAccumulator += deltaSeconds;
-	++g_FpsFrames;
-	if (g_FpsAccumulator >= 1.0f)
-	{
-		std::cout << "fps " << g_FpsFrames
-		          << "  |  그리기 " << g_LastDrawCalls
-		          << "  |  빛청크 " << g_Game.LitChunks()
-		          << "  |  맵청크 " << g_Game.MapChunks()
-		          << "  |  기름 " << static_cast<int>(g_Game.Oil() * 100.0f) << "%"
-		          << "  |  Lv " << g_Game.Level()
-		          << "  |  체력 " << static_cast<int>(g_Game.Health())
-		          << "  |  적 " << g_Game.EnemyCount()
-		          << "  |  울린 종 " << g_Game.RungRegions()
-		          << "  |  동행 " << (g_Game.HasCompanion()
-		                 ? (g_Game.CompanionDarkness() >= 1.0f ? "굳음"
-		                    : (g_Game.CompanionDarkness() > 0.5f ? "위험" : "함께"))
-		                 : "없음")
-		          << "  |  위치 " << static_cast<int>(g_Game.PlayerX())
-		          << ", " << static_cast<int>(g_Game.PlayerY())
-		          << std::endl;
-		g_FpsAccumulator = 0.0f;
-		g_FpsFrames = 0;
-	}
 
 	glutPostRedisplay();
 }

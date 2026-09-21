@@ -33,12 +33,11 @@ struct EnemyType
 
 const EnemyType& EnemyTypeOf(EnemyKind kind);
 
+// 적의 몸 상태. 자리는 EnemyActor가 갖는다.
 struct Enemy
 {
 	int id = 0;
 	EnemyKind kind = EnemyKind::Wraith;
-	float x = 0.0f;
-	float y = 0.0f;
 	float health = 0.0f;
 	float maxHealth = 0.0f;
 	float power = 1.0f;       // 섬 안쪽으로 갈수록 커지는 배율
@@ -61,8 +60,6 @@ struct Enemy
 // 등불에서 날아가는 불씨
 struct Projectile
 {
-	float x = 0.0f;
-	float y = 0.0f;
 	float vx = 0.0f;
 	float vy = 0.0f;
 	float damage = 0.0f;
@@ -75,8 +72,6 @@ struct Projectile
 // 종탑지기가 흩뿌리는 어둠 구슬
 struct Orb
 {
-	float x = 0.0f;
-	float y = 0.0f;
 	float vx = 0.0f;
 	float vy = 0.0f;
 	float damage = 0.0f;
@@ -94,8 +89,6 @@ enum class PickupKind
 struct Pickup
 {
 	PickupKind kind = PickupKind::Soul;
-	float x = 0.0f;
-	float y = 0.0f;
 	float vx = 0.0f;
 	float vy = 0.0f;
 	int value = 1;
@@ -105,8 +98,6 @@ struct Pickup
 // 머리 위로 떠올랐다 사라지는 글자. number가 0 이상이면 숫자를, 아니면 label을 쓴다.
 struct FloatingText
 {
-	float x = 0.0f;
-	float y = 0.0f;
 	float age = 0.0f;
 	float life = 0.9f;
 	int number = -1;
@@ -115,4 +106,20 @@ struct FloatingText
 	float g = 1.0f;
 	float b = 1.0f;
 	float size = 16.0f;
+};
+
+// 플레이어가 싸우며 쌓는 것들. PlayerActor가 들고 있다.
+struct PlayerCombat
+{
+	int level = 1;
+	int souls = 0;                 // 이번 레벨에서 모은 영혼
+	int weaponTier = 0;
+	float health = 100.0f;
+	float healthShown = 100.0f;    // 체력바 뒤로 천천히 따라오는 값
+	float invulnerable = 0.0f;
+	float hurtFlash = 0.0f;
+	float magnetTime = 0.0f;
+	float attackCooldown = 0.0f;
+	float levelUpGlow = 0.0f;
+	int deaths = 0;
 };

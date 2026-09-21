@@ -86,15 +86,15 @@ void World::Generate(Chunk& chunk, int chunkX, int chunkY) const
 
 	ChunkRandom random(HashCoords(chunkX, chunkY, m_Seed));
 
-	auto tile = [&chunk, n](int x, int y) -> unsigned char&
+	auto tile = [&chunk](int x, int y) -> unsigned char&
 	{
 		return chunk.tiles[y * n + x];
 	};
-	auto inside = [n](int x, int y)
+	auto inside = [](int x, int y)
 	{
 		return x >= 0 && y >= 0 && x < n && y < n;
 	};
-	auto onRoad = [mid](int x, int y)
+	auto onRoad = [](int x, int y)
 	{
 		return x == mid - 1 || x == mid || y == mid - 1 || y == mid;
 	};
