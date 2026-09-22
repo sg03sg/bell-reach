@@ -69,6 +69,9 @@ void GroundActor::OnDraw(const DrawContext& context) const
 
 	// ── 조명 층 ──
 	// 안개나 종탑 불빛보다 밝은 칸만 다시 그린다.
+	// 안개 층과 따로 세야 어느 쪽이 무거운지 보인다.
+	renderer->SetTag(DrawTag::GroundLight);
+
 	const LightGrid& light = game->GetLight();
 	const int firstCellX = light.CellOf(worldLeft);
 	const int lastCellX  = light.CellOf(worldRight);

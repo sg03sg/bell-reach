@@ -5,8 +5,10 @@
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
+#include <vector>
 
 #include "Dependencies/GL_Platform.h"
+#include "DrawStats.h"
 
 struct Color
 {
@@ -74,6 +76,34 @@ public:
 	void SetClip(float left, float bottom, float width, float height);
 	void ClearClip();
 
+	// ── 모아 그리기 ──────────────────────────────────────────────
+	//
+	// 사각형과 도형은 바로 그리지 않고 쌓아 두었다가 한 번에 보낸다.
+	// 모두 같은 단위 사각형을 쓰고 셰이더도 같으므로, 서로 다른 것은
+	// 위치 · 크기 · 색뿐이다. 그 값들만 인스턴스 속성으로 묶어 보내면
+	// 수천 개를 glDrawArraysInstanced 한 번으로 그릴 수 있다.
+	//
+	// 쌓인 것은 다음 경우에 저절로 나간다.
+	//   · 다른 종류를 그리려 할 때 (사각형 → 도형, 도형 → 글자)
+	//   · 자르기 영역이 바뀔 때
+	//   · 프레임이 끝날 때 (Flush를 직접 부른다)
+	//
+	// 그리는 순서는 그대로 지켜진다. 인스턴스는 넣은 차례대로 래스터화되므로
+	// 뒤에서 앞으로 그리는 2.5D 가림이 깨지지 않는다.
+	//
+	void Flush();
+
+	// 끄면 예전처럼 하나씩 그린다. 전후를 비교해 재려고 남겨 둔 길이다.
+	void SetBatching(bool enabled);
+	bool IsBatching() const { return m_Batching && m_BatchReady; }
+
+	// 다음 그리기부터 이 꼬리표로 센다. 장면 그래프가 액터마다 바꿔 준다.
+	void SetTag(DrawTag tag);
+
+	// 이번 프레임에 꼬리표별로 무엇이 몇 번 있었는가.
+	const DrawSample& Sample() const { return m_Sample; }
+	void ResetSample() { m_Sample.Clear(); }
+
 	// 이번 프레임에 그린 횟수. 진단용.
 	void ResetDrawCount() { m_DrawCount = 0; }
 	int DrawCount() const { return m_DrawCount; }
@@ -90,6 +120,19 @@ private:
 	void DrawRect(float x, float y, float size, float r, float g, float b, float a, float emissive);
 	void DrawShape(int shape, float x, float y, float halfWidth, float halfHeight, const Color& color,
 	               float rotation, float roundness, float softness, float emissive);
+
+	// ── 모아 그리기 속살 ──
+	enum class BatchKind { None, Rect, Shape };
+
+	bool CreateBatchResources();
+	void AppendRect(float x, float y, float size, const float rgba[4], float emissive);
+	void AppendShape(int shape, float centerX, float centerY, float extentX, float extentY,
+	                 const Color& color, float rotation, float roundness, float softness,
+	                 float emissive, float halfWidth, float halfHeight);
+	void BeginKind(BatchKind kind);
+	void FlushRects();
+	void FlushShapes();
+	void Count(int calls, int instances);
 
 	bool m_Initialized = false;
 	
@@ -125,6 +168,33 @@ private:
 	GLint m_ShapeLocSoftness = -1;
 
 	int m_DrawCount = 0;
+
+	// ── 모아 그리기 상태 ──
+	bool m_Batching = true;      // 끄면 예전처럼 하나씩 그린다
+	bool m_BatchReady = false;   // 인스턴싱 셰이더와 버퍼를 갖췄는가
+	BatchKind m_Kind = BatchKind::None;
+	DrawTag m_Tag = DrawTag::Other;
+	DrawSample m_Sample;
+
+	// 쌓아 둔 인스턴스. 한 인스턴스가 차지하는 float 개수는 아래 상수와 같다.
+	static const int kRectFloats = 9;    // 중심xy, 크기, 미사용, 색rgba, 발광
+	static const int kShapeFloats = 15;  // 중심xy+여유xy, 색rgba, 회전·발광·종류·둥글기, 반크기xy+흐림
+	std::vector<float> m_RectBatch;
+	std::vector<float> m_ShapeBatch;
+
+	// 쌓인 것이 어느 꼬리표의 것인지. 꼬리표가 바뀌면 끊어 보내야
+	// 센 값이 섞이지 않는다.
+	DrawTag m_BatchTag = DrawTag::Other;
+
+	GLuint m_RectInstShader = 0;
+	GLuint m_RectInstVao = 0;
+	GLuint m_RectInstVbo = 0;
+	size_t m_RectInstCapacity = 0;
+
+	GLuint m_ShapeInstShader = 0;
+	GLuint m_ShapeInstVao = 0;
+	GLuint m_ShapeInstVbo = 0;
+	size_t m_ShapeInstCapacity = 0;
 
 	// 글자
 	struct TextSprite

@@ -170,6 +170,7 @@
     <ClInclude Include="SceneGraph.h" />
     <ClInclude Include="Combat.h" />
     <ClInclude Include="PostProcess.h" />
+    <ClInclude Include="DrawStats.h" />
     <ClInclude Include="Profiler.h" />
     <ClInclude Include="Progression.h" />
     <ClInclude Include="Regions.h" />
@@ -193,6 +194,7 @@
     <ClCompile Include="SceneGraph.cpp" />
     <ClCompile Include="Combat.cpp" />
     <ClCompile Include="PostProcess.cpp" />
+    <ClCompile Include="DrawStats.cpp" />
     <ClCompile Include="Profiler.cpp" />
     <ClCompile Include="Progression.cpp" />
     <ClCompile Include="Regions.cpp" />

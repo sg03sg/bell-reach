@@ -55,3 +55,12 @@ void Actor::PruneDestroyed()
 		child->PruneDestroyed();
 	}
 }
+
+DrawTag Actor::Tag() const
+{
+	if (m_Tag < 0)
+	{
+		m_Tag = static_cast<int>(DrawTagFromActorName(m_Name.c_str()));
+	}
+	return static_cast<DrawTag>(m_Tag);
+}

@@ -23,6 +23,10 @@ Renderer::Renderer(int windowSizeX, int windowSizeY)
 
 Renderer::~Renderer()
 {
+	if (m_RectInstVbo != 0)   glDeleteBuffers(1, &m_RectInstVbo);
+	if (m_ShapeInstVbo != 0)  glDeleteBuffers(1, &m_ShapeInstVbo);
+	if (m_RectInstVao != 0)   glDeleteVertexArrays(1, &m_RectInstVao);
+	if (m_ShapeInstVao != 0)  glDeleteVertexArrays(1, &m_ShapeInstVao);
 }
 
 void Renderer::Initialize(int windowSizeX, int windowSizeY)
@@ -40,6 +44,10 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 	m_SolidRectShader = CompileShaders("./Shaders/SolidRect.vs", "./Shaders/SolidRect.fs");
 	m_ShapeShader = CompileShaders("./Shaders/Shape.vs", "./Shaders/Shape.fs");
 	m_TextShader = CompileShaders("./Shaders/Text.vs", "./Shaders/Text.fs");
+
+	// 모아 그리기용. 없어도 게임은 돌아가고, 예전처럼 하나씩 그린다.
+	m_RectInstShader = CompileShaders("./Shaders/SolidRectInst.vs", "./Shaders/SolidRectInst.fs");
+	m_ShapeInstShader = CompileShaders("./Shaders/ShapeInst.vs", "./Shaders/ShapeInst.fs");
 	
 	//Create VBOs
 	CreateVertexBufferObjects();
@@ -98,6 +106,15 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 	{
 		m_Initialized = true;
 	}
+
+	m_BatchReady = CreateBatchResources();
+	if (!m_BatchReady)
+	{
+		std::cout << "모아 그리기를 쓸 수 없어 하나씩 그립니다. 드로우 콜이 많아집니다.\n";
+	}
+
+	// 배치용 VAO를 만들며 바인딩이 바뀌었다. 글자와 이미지는 기본 VAO를 쓴다.
+	glBindVertexArray(m_VAO);
 }
 
 bool Renderer::IsInitialized()
@@ -264,6 +281,14 @@ void Renderer::DrawRect(float x, float y, float size, float r, float g, float b,
 
 	GetGLPosition(x, y, &newX, &newY);
 
+	if (IsBatching())
+	{
+		const float rgba[4] = { r, g, b, a };
+		BeginKind(BatchKind::Rect);
+		AppendRect(newX, newY, size, rgba, emissive);
+		return;
+	}
+
 	glUseProgram(m_SolidRectShader);
 
 	glUniform4f(m_LocTrans, newX, newY, 0, size);
@@ -282,7 +307,7 @@ void Renderer::DrawRect(float x, float y, float size, float r, float g, float b,
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	glDisableVertexAttribArray(m_AttribPosition);
-	++m_DrawCount;
+	Count(1, 1);
 }
 
 void Renderer::DrawShape(int shape, float x, float y, float halfWidth, float halfHeight, const Color& color,
@@ -298,6 +323,14 @@ void Renderer::DrawShape(int shape, float x, float y, float halfWidth, float hal
 
 	// 경계를 부드럽게 섞을 여유. 이만큼 사각형을 크게 잡아야 가장자리가 잘리지 않는다.
 	const float padding = softness + 2.0f;
+
+	if (IsBatching())
+	{
+		BeginKind(BatchKind::Shape);
+		AppendShape(shape, centerX, centerY, halfWidth + padding, halfHeight + padding,
+		            color, rotation, roundness, softness, emissive, halfWidth, halfHeight);
+		return;
+	}
 
 	glUseProgram(m_ShapeShader);
 
@@ -318,7 +351,7 @@ void Renderer::DrawShape(int shape, float x, float y, float halfWidth, float hal
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	glDisableVertexAttribArray(m_ShapeAttribPosition);
-	++m_DrawCount;
+	Count(1, 1);
 }
 
 const Renderer::TextSprite* Renderer::FindOrCreateText(const std::string& utf8, float pixelSize)
@@ -377,6 +410,10 @@ float Renderer::DrawLabel(const std::string& utf8, float pixelSize, float left, 
 		return sprite != NULL ? static_cast<float>(sprite->width) : 0.0f;
 	}
 
+	// 글자는 셰이더도 텍스처도 다르므로 모아 그릴 수 없다.
+	// 쌓여 있던 것을 먼저 내보내야 앞뒤 순서가 지켜진다.
+	Flush();
+
 	// 픽셀 경계에 맞춰야 글자가 번지지 않는다.
 	const float x = std::floor(left + 0.5f);
 	const float y = std::floor(top + 0.5f);
@@ -402,7 +439,7 @@ float Renderer::DrawLabel(const std::string& utf8, float pixelSize, float left, 
 
 	glDisableVertexAttribArray(m_TextAttribPosition);
 	glBindTexture(GL_TEXTURE_2D, 0);
-	++m_DrawCount;
+	Count(1, 1);
 
 	return static_cast<float>(sprite->width);
 }
@@ -440,6 +477,8 @@ void Renderer::DrawImage(GLuint image, float left, float top, float width, float
 		return;
 	}
 
+	Flush();
+
 	float centerX, centerY;
 	GetGLPosition(left + width * 0.5f, top - height * 0.5f, &centerX, &centerY);
 
@@ -461,11 +500,14 @@ void Renderer::DrawImage(GLuint image, float left, float top, float width, float
 
 	glDisableVertexAttribArray(m_TextAttribPosition);
 	glBindTexture(GL_TEXTURE_2D, 0);
-	++m_DrawCount;
+	Count(1, 1);
 }
 
 void Renderer::SetClip(float left, float bottom, float width, float height)
 {
+	// 쌓아 둔 것은 아직 자르기 전 영역의 것이다. 먼저 내보낸다.
+	Flush();
+
 	// 가위 테스트는 프레임버퍼 픽셀 단위이고 왼쪽 아래가 원점이다.
 	// 창의 논리 크기와 실제 프레임버퍼 크기가 다를 수 있어 뷰포트로 환산한다.
 	GLint viewport[4] = { 0, 0, 0, 0 };
@@ -483,6 +525,8 @@ void Renderer::SetClip(float left, float bottom, float width, float height)
 
 void Renderer::ClearClip()
 {
+	Flush();
+
 	// 켜둔 채로 다음 프레임에 넘어가면 후처리 버퍼를 비울 때도 잘린다.
 	glDisable(GL_SCISSOR_TEST);
 }
@@ -527,4 +571,272 @@ void Renderer::GetGLPosition(float x, float y, float *newX, float *newY)
 {
 	*newX = x * 2.f / m_WindowSizeX;
 	*newY = y * 2.f / m_WindowSizeY;
+}
+// ═══ 모아 그리기 ═══════════════════════════════════════════════════
+//
+// 사각형도 도형도 결국 같은 단위 사각형 여섯 꼭짓점을 그린다.
+// 다른 것은 위치 · 크기 · 색뿐이므로, 그 값들만 따로 모아 인스턴스마다
+// 하나씩 넘기면 수천 개를 glDrawArraysInstanced 한 번에 보낼 수 있다.
+//
+// glVertexAttribDivisor(loc, 1)이 "이 속성은 꼭짓점마다가 아니라
+// 인스턴스마다 넘어간다"는 표시다. 이것을 VAO에 한 번 기록해 두면
+// 그릴 때는 버퍼만 채우고 부르면 된다.
+
+bool Renderer::CreateBatchResources()
+{
+	if (m_RectInstShader == 0 || m_ShapeInstShader == 0)
+	{
+		return false;
+	}
+	if (m_VBORect == 0 || m_VBOQuad == 0)
+	{
+		return false;
+	}
+
+	// ── 사각형 ──
+	{
+		const GLint aPos   = glGetAttribLocation(m_RectInstShader, "a_Position");
+		const GLint iTrans = glGetAttribLocation(m_RectInstShader, "i_Trans");
+		const GLint iColor = glGetAttribLocation(m_RectInstShader, "i_Color");
+		const GLint iEmis  = glGetAttribLocation(m_RectInstShader, "i_Emissive");
+		if (aPos < 0 || iTrans < 0 || iColor < 0 || iEmis < 0)
+		{
+			return false;
+		}
+
+		glGenVertexArrays(1, &m_RectInstVao);
+		glBindVertexArray(m_RectInstVao);
+
+		glBindBuffer(GL_ARRAY_BUFFER, m_VBORect);
+		glEnableVertexAttribArray(aPos);
+		glVertexAttribPointer(aPos, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
+
+		glGenBuffers(1, &m_RectInstVbo);
+		glBindBuffer(GL_ARRAY_BUFFER, m_RectInstVbo);
+
+		const GLsizei stride = static_cast<GLsizei>(sizeof(float) * 9);
+		glEnableVertexAttribArray(iTrans);
+		glVertexAttribPointer(iTrans, 4, GL_FLOAT, GL_FALSE, stride,
+		                      reinterpret_cast<const void*>(sizeof(float) * 0));
+		glVertexAttribDivisor(iTrans, 1);
+
+		glEnableVertexAttribArray(iColor);
+		glVertexAttribPointer(iColor, 4, GL_FLOAT, GL_FALSE, stride,
+		                      reinterpret_cast<const void*>(sizeof(float) * 4));
+		glVertexAttribDivisor(iColor, 1);
+
+		glEnableVertexAttribArray(iEmis);
+		glVertexAttribPointer(iEmis, 1, GL_FLOAT, GL_FALSE, stride,
+		                      reinterpret_cast<const void*>(sizeof(float) * 8));
+		glVertexAttribDivisor(iEmis, 1);
+	}
+
+	// ── 도형 ──
+	{
+		const GLint aPos    = glGetAttribLocation(m_ShapeInstShader, "a_Position");
+		const GLint iCenter = glGetAttribLocation(m_ShapeInstShader, "i_CenterExtent");
+		const GLint iColor  = glGetAttribLocation(m_ShapeInstShader, "i_Color");
+		const GLint iParams = glGetAttribLocation(m_ShapeInstShader, "i_Params");
+		const GLint iHalf   = glGetAttribLocation(m_ShapeInstShader, "i_HalfSoft");
+		if (aPos < 0 || iCenter < 0 || iColor < 0 || iParams < 0 || iHalf < 0)
+		{
+			return false;
+		}
+
+		glGenVertexArrays(1, &m_ShapeInstVao);
+		glBindVertexArray(m_ShapeInstVao);
+
+		glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
+		glEnableVertexAttribArray(aPos);
+		glVertexAttribPointer(aPos, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0);
+
+		glGenBuffers(1, &m_ShapeInstVbo);
+		glBindBuffer(GL_ARRAY_BUFFER, m_ShapeInstVbo);
+
+		const GLsizei stride = static_cast<GLsizei>(sizeof(float) * 15);
+		glEnableVertexAttribArray(iCenter);
+		glVertexAttribPointer(iCenter, 4, GL_FLOAT, GL_FALSE, stride,
+		                      reinterpret_cast<const void*>(sizeof(float) * 0));
+		glVertexAttribDivisor(iCenter, 1);
+
+		glEnableVertexAttribArray(iColor);
+		glVertexAttribPointer(iColor, 4, GL_FLOAT, GL_FALSE, stride,
+		                      reinterpret_cast<const void*>(sizeof(float) * 4));
+		glVertexAttribDivisor(iColor, 1);
+
+		glEnableVertexAttribArray(iParams);
+		glVertexAttribPointer(iParams, 4, GL_FLOAT, GL_FALSE, stride,
+		                      reinterpret_cast<const void*>(sizeof(float) * 8));
+		glVertexAttribDivisor(iParams, 1);
+
+		glEnableVertexAttribArray(iHalf);
+		glVertexAttribPointer(iHalf, 3, GL_FLOAT, GL_FALSE, stride,
+		                      reinterpret_cast<const void*>(sizeof(float) * 12));
+		glVertexAttribDivisor(iHalf, 1);
+
+		// 창 크기는 바뀌지 않으므로 한 번만 보낸다.
+		glUseProgram(m_ShapeInstShader);
+		glUniform2f(glGetUniformLocation(m_ShapeInstShader, "u_Viewport"),
+		            static_cast<float>(m_WindowSizeX), static_cast<float>(m_WindowSizeY));
+	}
+
+	// 넉넉히 잡아 두면 첫 몇 프레임에 버퍼가 자라느라 멈칫하지 않는다.
+	m_RectBatch.reserve(4096 * 9);
+	m_ShapeBatch.reserve(4096 * 15);
+	return true;
+}
+
+void Renderer::SetTag(DrawTag tag)
+{
+	m_Tag = tag;
+}
+
+void Renderer::SetBatching(bool enabled)
+{
+	if (m_Batching == enabled)
+	{
+		return;
+	}
+	Flush();
+	m_Batching = enabled;
+}
+
+void Renderer::Count(int calls, int instances)
+{
+	m_DrawCount += calls;
+	const int tag = static_cast<int>(m_Tag);
+	m_Sample.calls[tag] += calls;
+	m_Sample.instances[tag] += instances;
+}
+
+void Renderer::BeginKind(BatchKind kind)
+{
+	if (m_Kind != kind)
+	{
+		if (m_Kind != BatchKind::None)
+		{
+			// 종류가 바뀌면 끊을 수밖에 없다. 이 횟수가 곧 모아 그리기의 한계다.
+			++m_Sample.kindBreaks;
+		}
+		Flush();
+		m_Kind = kind;
+		m_BatchTag = m_Tag;
+	}
+}
+
+void Renderer::AppendRect(float x, float y, float size, const float rgba[4], float emissive)
+{
+	m_RectBatch.push_back(x);
+	m_RectBatch.push_back(y);
+	m_RectBatch.push_back(size);
+	m_RectBatch.push_back(0.0f);          // 자리 맞춤. vec4 하나로 읽는다
+	m_RectBatch.push_back(rgba[0]);
+	m_RectBatch.push_back(rgba[1]);
+	m_RectBatch.push_back(rgba[2]);
+	m_RectBatch.push_back(rgba[3]);
+	m_RectBatch.push_back(emissive);
+
+	++m_Sample.instances[static_cast<int>(m_Tag)];
+}
+
+void Renderer::AppendShape(int shape, float centerX, float centerY, float extentX, float extentY,
+                           const Color& color, float rotation, float roundness, float softness,
+                           float emissive, float halfWidth, float halfHeight)
+{
+	m_ShapeBatch.push_back(centerX);
+	m_ShapeBatch.push_back(centerY);
+	m_ShapeBatch.push_back(extentX);
+	m_ShapeBatch.push_back(extentY);
+
+	m_ShapeBatch.push_back(color.r);
+	m_ShapeBatch.push_back(color.g);
+	m_ShapeBatch.push_back(color.b);
+	m_ShapeBatch.push_back(color.a);
+
+	m_ShapeBatch.push_back(rotation);
+	m_ShapeBatch.push_back(emissive);
+	m_ShapeBatch.push_back(static_cast<float>(shape));
+	m_ShapeBatch.push_back(roundness);
+
+	m_ShapeBatch.push_back(halfWidth);
+	m_ShapeBatch.push_back(halfHeight);
+	m_ShapeBatch.push_back(softness);
+
+	++m_Sample.instances[static_cast<int>(m_Tag)];
+}
+
+// 쌓인 것을 GPU로 올린다. 버퍼를 통째로 버리고 새로 담는 것(orphaning)은
+// 드라이버가 지난 프레임의 그리기가 끝나기를 기다리지 않게 하려는 것이다.
+static void UploadInstances(const std::vector<float>& data, size_t& capacityBytes)
+{
+	const size_t bytes = data.size() * sizeof(float);
+	if (bytes > capacityBytes)
+	{
+		glBufferData(GL_ARRAY_BUFFER, bytes, data.data(), GL_STREAM_DRAW);
+		capacityBytes = bytes;
+	}
+	else
+	{
+		glBufferData(GL_ARRAY_BUFFER, capacityBytes, NULL, GL_STREAM_DRAW);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, bytes, data.data());
+	}
+}
+
+void Renderer::FlushRects()
+{
+	const GLsizei count = static_cast<GLsizei>(m_RectBatch.size() / 9);
+	if (count <= 0)
+	{
+		return;
+	}
+
+	glBindVertexArray(m_RectInstVao);
+	glBindBuffer(GL_ARRAY_BUFFER, m_RectInstVbo);
+	UploadInstances(m_RectBatch, m_RectInstCapacity);
+
+	glUseProgram(m_RectInstShader);
+	glDrawArraysInstanced(GL_TRIANGLES, 0, 6, count);
+
+	++m_DrawCount;
+	++m_Sample.flushes;
+	++m_Sample.calls[static_cast<int>(m_BatchTag)];
+
+	m_RectBatch.clear();
+	glBindVertexArray(m_VAO);
+}
+
+void Renderer::FlushShapes()
+{
+	const GLsizei count = static_cast<GLsizei>(m_ShapeBatch.size() / 15);
+	if (count <= 0)
+	{
+		return;
+	}
+
+	glBindVertexArray(m_ShapeInstVao);
+	glBindBuffer(GL_ARRAY_BUFFER, m_ShapeInstVbo);
+	UploadInstances(m_ShapeBatch, m_ShapeInstCapacity);
+
+	glUseProgram(m_ShapeInstShader);
+	glDrawArraysInstanced(GL_TRIANGLES, 0, 6, count);
+
+	++m_DrawCount;
+	++m_Sample.flushes;
+	++m_Sample.calls[static_cast<int>(m_BatchTag)];
+
+	m_ShapeBatch.clear();
+	glBindVertexArray(m_VAO);
+}
+
+void Renderer::Flush()
+{
+	if (!m_RectBatch.empty())
+	{
+		FlushRects();
+	}
+	if (!m_ShapeBatch.empty())
+	{
+		FlushShapes();
+	}
+	m_Kind = BatchKind::None;
 }

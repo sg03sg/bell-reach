@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "SceneGraph.h"
 
+#include "Renderer.h"
+
 #include <algorithm>
 
 SceneGraph::SceneGraph()
@@ -111,6 +113,10 @@ void SceneGraph::Draw(const DrawContext& context, unsigned int layerMask) const
 
 	for (size_t i = 0; i < m_DrawList.size(); ++i)
 	{
+		// 액터마다 꼬리표를 바꿔 두면, 성능 로그가 "무엇이 몇 개를
+		// 그렸는지"를 종류별로 나눠 보여 준다. 액터 쪽은 손댈 것이 없다.
+		context.renderer->SetTag(m_DrawList[i]->Tag());
 		m_DrawList[i]->OnDraw(context);
 	}
+	context.renderer->SetTag(DrawTag::Other);
 }

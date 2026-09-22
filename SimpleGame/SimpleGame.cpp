@@ -10,6 +10,7 @@ but WITHOUT ANY WARRANTY.
 
 #include "stdafx.h"
 #include <iostream>
+#include <string>
 #include <fstream>
 #include <vector>
 #include <cstdlib>
@@ -97,6 +98,11 @@ void DriveScriptedWalk(float elapsed)
 // ── 콘솔 진단 ──
 // 프레임에 걸린 시간과 그린 횟수를 모아 1초마다 한 줄로 찍는다.
 Profiler g_Profiler;
+
+// 성능 기록을 남길 파일. --perf 로 바꾼다. 기본값으로도 남겨 두는 것은,
+// 나중에 "그때 왜 느렸지"를 돌아보려면 평소에 쌓여 있어야 하기 때문이다.
+std::string g_PerfLogPath = "perf-log.csv";
+bool g_StartBatching = true;
 Profiler::Frame g_FrameStats;
 
 void RenderScene(void)
@@ -108,7 +114,11 @@ void RenderScene(void)
 
 	g_Post.BeginScene(0.020f, 0.022f, 0.031f);
 
+	g_Renderer->ResetSample();
 	g_Game.Render(g_Renderer);
+
+	// 쌓아 둔 것을 내보내야 장면이 완성된다. 후처리로 넘기기 전에 반드시.
+	g_Renderer->Flush();
 	g_FrameStats.sceneDrawCalls = g_Renderer->DrawCount();
 
 	// 장면(HDR) -> 번짐 · 가장자리 흐림 · 톤 매핑 · 비네트 -> 화면
@@ -117,13 +127,28 @@ void RenderScene(void)
 
 	// HUD는 후처리가 끝난 화면 위에. 비네트에 가려지지 않는다.
 	g_Game.RenderHud(g_Renderer);
+	g_Renderer->Flush();
 	g_FrameStats.hudDrawCalls = g_Renderer->DrawCount() - g_FrameStats.sceneDrawCalls;
+	g_FrameStats.sample = g_Renderer->Sample();
 
 	// 이 프레임에 걸린 시간은 Idle이 재어 둔 값이다. 그리기가 끝난 지금 함께 기록한다.
 	g_Profiler.AddFrame(g_FrameStats);
 	if (g_Profiler.ShouldReport())
 	{
-		std::cout << g_Profiler.Report() << "\n"
+		Profiler::State state;
+		state.level = g_Game.Level();
+		state.health = static_cast<int>(g_Game.Health());
+		state.enemies = static_cast<int>(g_Game.EnemyCount());
+		state.actors = static_cast<int>(g_Game.ActorCount());
+		state.lightChunks = static_cast<int>(g_Game.LitChunks());
+		state.mapChunks = static_cast<int>(g_Game.MapChunks());
+		state.oilPercent = static_cast<int>(g_Game.Oil() * 100.0f);
+		state.rungRegions = g_Game.RungRegions();
+		state.playerX = g_Game.PlayerX();
+		state.playerY = g_Game.PlayerY();
+		state.batching = g_Renderer->IsBatching();
+
+		std::cout << g_Profiler.Report(state) << "\n"
 		          << "[상태] Lv " << g_Game.Level()
 		          << "  체력 " << static_cast<int>(g_Game.Health())
 		          << "  적 " << g_Game.EnemyCount()
@@ -202,6 +227,14 @@ void KeyInput(unsigned char key, int x, int y)
 		std::cout << "미니맵 " << (g_Game.IsMinimapVisible() ? "켜짐" : "꺼짐") << "\n";
 		return;
 	}
+	// 모아 그리기 전후를 바로 비교할 수 있게 한다.
+	// 켜고 끌 때 드로우 콜이 어떻게 바뀌는지가 다음 [성능] 줄에 바로 나온다.
+	if (key == 'b' || key == 'B')
+	{
+		g_Renderer->SetBatching(!g_Renderer->IsBatching());
+		std::cout << "모아 그리기 " << (g_Renderer->IsBatching() ? "켜짐" : "꺼짐") << "\n";
+		return;
+	}
 	if (key == 't' || key == 'T')
 	{
 		g_Post.settings.toneMapper = 1 - g_Post.settings.toneMapper;
@@ -227,6 +260,17 @@ void SpecialKeyUpInput(int key, int x, int y)
 	g_Input.OnSpecialKeyUp(key);
 }
 
+// 실행이 끝날 때 처음부터 끝까지의 요약을 한 줄 남긴다.
+// ESC로 나가든 창을 닫든 같은 자리에서 불린다.
+void PrintSessionSummary()
+{
+	const std::string summary = g_Profiler.SessionSummary();
+	if (!summary.empty())
+	{
+		std::cout << summary << std::endl;
+	}
+}
+
 void Reshape(int width, int height)
 {
 	// 직접 등록하면 GLUT 기본 동작(뷰포트 갱신)이 사라지므로 대신 해 준다.
@@ -249,6 +293,18 @@ int main(int argc, char **argv)
 		else if (std::strcmp(argv[i], "--seed") == 0)
 		{
 			seed = static_cast<unsigned int>(std::strtoul(argv[i + 1], NULL, 10));
+		}
+		else if (std::strcmp(argv[i], "--perf") == 0)
+		{
+			g_PerfLogPath = argv[i + 1];
+		}
+	}
+
+	for (int i = 1; i < argc; ++i)
+	{
+		if (std::strcmp(argv[i], "--nobatch") == 0)
+		{
+			g_StartBatching = false;
 		}
 	}
 
@@ -276,6 +332,11 @@ int main(int argc, char **argv)
 
 	// Initialize Renderer
 	g_Renderer = new Renderer(WINDOW_WIDTH, WINDOW_HEIGHT);
+	g_Renderer->SetBatching(g_StartBatching);
+	g_Profiler.SetLogPath(g_PerfLogPath);
+	std::cout << "성능 기록: " << g_PerfLogPath
+	          << "   (B = 모아 그리기 켜고 끄기, P = 후처리, M = 미니맵)\n";
+	std::atexit(PrintSessionSummary);
 	if (!g_Renderer->IsInitialized())
 	{
 		std::cout << "Renderer could not be initialized.. \n";

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DrawStats.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -99,6 +100,9 @@ public:
 	void SetActive(bool active) { m_Active = active; }
 	const std::string& Name() const { return m_Name; }
 
+	// 성능 로그에서 어느 칸에 셀지. 이름으로 한 번만 찾아 기억해 둔다.
+	DrawTag Tag() const;
+
 	// Game이 청크 단위로 놓고 치울 때 쓰는 꼬리표.
 	// 0이면 지형에서 나온 액터가 아니라 스스로 나고 스스로 사라지는 액터다.
 	long long StreamKey() const { return m_StreamKey; }
@@ -125,6 +129,7 @@ public:
 
 private:
 	std::string m_Name;
+	mutable int m_Tag = -1;      // 아직 안 찾았으면 -1
 	Actor* m_Parent = NULL;
 	std::vector<std::unique_ptr<Actor>> m_Children;
 

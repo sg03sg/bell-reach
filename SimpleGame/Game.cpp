@@ -502,6 +502,7 @@ void Game::RebuildMinimap(Renderer* renderer)
 
 void Game::DrawMinimap(Renderer* renderer)
 {
+	renderer->SetTag(DrawTag::Minimap);
 	const int playerTileX = FloorToInt(m_PlayerX / kTileSize);
 	const int playerTileY = FloorToInt(m_PlayerY / kTileSize);
 	const int drift = std::max(std::abs(playerTileX - (m_MapOriginX + kMapTiles / 2)),
@@ -661,6 +662,7 @@ void Game::DrawPrompt(Renderer* renderer, const std::string& text, float centerX
 
 void Game::DrawPrompts(Renderer* renderer)
 {
+	renderer->SetTag(DrawTag::Dialogue);
 	// 말을 걸 수 있는 사람
 	if (const Regions::Region* region = FindTalkableSleeper())
 	{
@@ -692,6 +694,7 @@ void Game::DrawPrompts(Renderer* renderer)
 
 void Game::DrawDialogue(Renderer* renderer)
 {
+	renderer->SetTag(DrawTag::Dialogue);
 	const DialoguePage& page = m_Dialogue.pages[m_Dialogue.page];
 
 	// 화면 아래, HUD 줄 바로 위에 대화창을 둔다.
@@ -798,6 +801,7 @@ float Game::DrawDigits(Renderer* renderer, const std::string& text, float size,
 
 void Game::DrawCombatHud(Renderer* renderer)
 {
+	renderer->SetTag(DrawTag::Hud);
 	const float halfWidth = m_WindowWidth * 0.5f;
 	const float halfHeight = m_WindowHeight * 0.5f;
 
