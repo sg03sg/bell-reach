@@ -64,6 +64,10 @@ public:
 	bool IsTalking() const { return m_Dialogue.active; }
 	float RingProgress() const { return m_RingProgress; }
 	void ToggleMinimap() { m_ShowMinimap = !m_ShowMinimap; }
+
+	// 어둠 위의 연무. 켜고 끄며 차이를 볼 수 있게 한다.
+	void ToggleMist() { m_ShowMist = !m_ShowMist; }
+	bool IsMistVisible() const { return m_ShowMist; }
 	bool IsMinimapVisible() const { return m_ShowMinimap; }
 
 	// ═══ 액터들이 세계에 묻는 것 ═══════════════════════════════════
@@ -166,6 +170,9 @@ private:
 	// ── 화면에 붙는 것들 ──
 	void DrawHud(Renderer* renderer);
 	void DrawCombatHud(Renderer* renderer);
+	void DrawStatus(Renderer* renderer);
+	void DrawMist(Renderer* renderer);
+	void DrawPerks(Renderer* renderer);
 	void DrawDialogue(Renderer* renderer);
 	void DrawPrompts(Renderer* renderer);
 	void DrawPrompt(Renderer* renderer, const std::string& text, float centerX, float bottomY);
@@ -227,6 +234,14 @@ private:
 	float m_SpawnTimer = 4.0f;
 	bool m_PendingRespawn = false;
 	float m_RespawnTimer = 0.0f;
+
+	// ── 상태 창 · 연무 ──
+	bool m_ShowStatus = false;           // Tab을 누르고 있는 동안
+	bool m_ShowMist = true;
+	unsigned int m_MistImage = 0;
+	int m_MistColumns = 0;
+	int m_MistRows = 0;
+	std::vector<unsigned char> m_MistPixels;
 
 	// ── 미니맵 ──
 	bool m_ShowMinimap = true;

@@ -444,14 +444,15 @@ float Renderer::DrawLabel(const std::string& utf8, float pixelSize, float left, 
 	return static_cast<float>(sprite->width);
 }
 
-GLuint Renderer::CreateImage(int width, int height)
+GLuint Renderer::CreateImage(int width, int height, bool smooth)
 {
 	GLuint image = 0;
 	glGenTextures(1, &image);
 	glBindTexture(GL_TEXTURE_2D, image);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	const GLint filter = smooth ? GL_LINEAR : GL_NEAREST;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -470,7 +471,8 @@ void Renderer::UpdateImage(GLuint image, int width, int height, const unsigned c
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void Renderer::DrawImage(GLuint image, float left, float top, float width, float height, float alpha)
+void Renderer::DrawImage(GLuint image, float left, float top, float width, float height, float alpha,
+                         bool blocksGlow)
 {
 	if (image == 0 || m_TextShader == 0)
 	{
@@ -487,7 +489,7 @@ void Renderer::DrawImage(GLuint image, float left, float top, float width, float
 	glUniform2f(m_TextLocSize, width, height);
 	glUniform4f(m_TextLocColor, 1.0f, 1.0f, 1.0f, alpha);
 	glUniform1f(m_TextLocReveal, 1.0f);
-	glUniform1i(m_TextLocMode, 1);
+	glUniform1i(m_TextLocMode, blocksGlow ? 1 : 2);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, image);

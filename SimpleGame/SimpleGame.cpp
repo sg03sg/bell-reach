@@ -258,6 +258,13 @@ void KeyInput(unsigned char key, int x, int y)
 		std::cout << "모아 그리기 " << (g_Renderer->IsBatching() ? "켜짐" : "꺼짐") << "\n";
 		return;
 	}
+	// 어둠 위의 연무를 켜고 끈다. 있을 때와 없을 때를 바로 비교할 수 있게.
+	if (key == 'g' || key == 'G')
+	{
+		g_Game.ToggleMist();
+		std::cout << "연무 " << (g_Game.IsMistVisible() ? "켜짐" : "꺼짐") << "\n";
+		return;
+	}
 	if (key == 't' || key == 'T')
 	{
 		g_Post.settings.toneMapper = 1 - g_Post.settings.toneMapper;
@@ -401,7 +408,10 @@ int main(int argc, char **argv)
 		<< "   F               불씨를 쏜다 — 가까운 적을 저절로 노린다 (누르고 있으면 연사)\n"
 		<< "   Space           말을 건다 · 대사 넘기기 · 종을 당긴다(누르고 있을 것)\n"
 		<< "   E               화톳불을 내려놓는다 (3개)\n"
+		<< "   Tab             누르고 있는 동안 상태 창 (공격력 · 스킬 · 되찾은 사람들)\n"
 		<< "   M               미니맵 켜기/끄기\n"
+		<< "   G               어둠 위의 연무 켜기/끄기\n"
+		<< "   B               모아 그리기 켜기/끄기 (성능 비교)\n"
 		<< "   P               후처리 켜기/끄기 (전후 비교)\n"
 		<< "   T               톤 매핑 전환 (어깨 곡선 / ACES)\n"
 		<< "   ESC             끝낸다\n"

@@ -21,13 +21,16 @@ void main()
 	}
 
 	vec4 sampled = texture(u_Texture, v_UV);
-	vec3 rgb = (u_Mode == 1) ? sampled.rgb * u_Color.rgb : u_Color.rgb;
-	float alpha = (u_Mode == 1) ? sampled.a * u_Color.a : sampled.r * u_Color.a;
+	// 0 = 글자(알파 마스크), 1 = 이미지, 2 = 발광을 가리지 않는 이미지(안개)
+	vec3 rgb = (u_Mode >= 1) ? sampled.rgb * u_Color.rgb : u_Color.rgb;
+	float alpha = (u_Mode >= 1) ? sampled.a * u_Color.a : sampled.r * u_Color.a;
 	if (alpha <= 0.002)
 	{
 		discard;
 	}
 
 	FragColor = vec4(rgb, alpha);
-	EmissiveColor = vec4(0.0, 0.0, 0.0, alpha);   // 글자와 지도는 빛나지 않는다
+	// 글자와 지도는 빛나지 않고, 뒤의 발광을 가린다.
+	// 안개(2)는 발광 버퍼를 건드리지 않는다 — 알파 0이면 섞어도 그대로다.
+	EmissiveColor = vec4(0.0, 0.0, 0.0, (u_Mode == 2) ? 0.0 : alpha);
 }

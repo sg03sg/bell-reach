@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <utility>
@@ -449,6 +450,12 @@ void Game::DrawHud(Renderer* renderer)
 	else
 	{
 		DrawPrompts(renderer);
+	}
+
+	// 상태 창은 맨 위에. Tab을 누르고 있는 동안만.
+	if (m_ShowStatus)
+	{
+		DrawStatus(renderer);
 	}
 }
 
@@ -1482,6 +1489,8 @@ void Game::RespawnPlayer()
 
 void Game::Update(float deltaSeconds, const Input& input)
 {
+	m_ShowStatus = input.HoldingStatus();
+
 	m_Time += deltaSeconds;
 	m_MapAge += deltaSeconds;
 
@@ -1539,10 +1548,125 @@ void Game::Render(Renderer* renderer)
 	context.windowWidth = m_WindowWidth;
 	context.windowHeight = m_WindowHeight;
 
-	// 땅 → 서 있는 것들 → 날아다니는 것들. 같은 층 안에서는 발밑이 아래인 것이 앞이다.
+	// 땅 → 서 있는 것들 → 연무 → 날아다니는 것들. 같은 층 안에서는 발밑이 아래인 것이 앞이다.
+	// 연무를 날아다니는 것들보다 먼저 까는 것은, 불씨와 스킬 효과가 안개를
+	// 뚫고 보여야 싸움이 읽히기 때문이다.
 	m_Scene.Draw(context, SceneGraph::MaskOf(Actor::Layer::Ground)
-	                    | SceneGraph::MaskOf(Actor::Layer::Object)
-	                    | SceneGraph::MaskOf(Actor::Layer::Effect));
+	                    | SceneGraph::MaskOf(Actor::Layer::Object));
+	DrawMist(renderer);
+	m_Scene.Draw(context, SceneGraph::MaskOf(Actor::Layer::Effect));
+}
+
+//
+// 어둠 위에 깔리는 연무.
+//
+// 화면을 40px 칸으로 나눠 칸마다 안개가 얼마나 짙은지 정하고, 그걸 작은
+// 그림 한 장(27x19)에 담아 화면 크기로 부드럽게 늘려 그린다. 늘릴 때
+// 이웃 칸끼리 섞이므로 칸의 경계는 보이지 않고 은은한 연무만 남는다.
+//
+// 큰 원 수십 개를 겹쳐 그리는 방법(독초 연기처럼)도 있지만, 안개는 크고
+// 가장자리가 넓어 화면을 스무 번 넘게 덧칠하게 된다. 이 방법은 한 번이다.
+//
+// 짙기는 두 가지로 정한다.
+//   · 밝기 — 종소리가 닿는 곳, 등불이 비추는 곳, 발자국이 남은 곳에서 걷힌다
+//   · 노이즈 — 시간에 따라 천천히 흐르는 결. 같은 어둠도 짙고 옅은 데가 있다
+//
+// 칸은 세계에 박혀 있다(카메라가 아니라). 그래서 걸어가도 안개가 따라오지
+// 않고 제자리에서 흐른다.
+//
+// 안개는 발광을 가리지 않는다. 짙은 어둠 너머에서도 적의 붉은 눈은 번진다.
+//
+namespace
+{
+	float Hash01(int x, int y)
+	{
+		return static_cast<float>(PropHash(x * 7 + 101, y * 13 + 57) & 0xffffu) / 65535.0f;
+	}
+
+	// 격자 꼭짓점의 값을 부드럽게 이은 노이즈. 0~1.
+	float SmoothNoise(float x, float y)
+	{
+		const int ix = FloorToInt(x);
+		const int iy = FloorToInt(y);
+		float fx = x - static_cast<float>(ix);
+		float fy = y - static_cast<float>(iy);
+		fx = fx * fx * (3.0f - 2.0f * fx);
+		fy = fy * fy * (3.0f - 2.0f * fy);
+		const float a = Hash01(ix, iy);
+		const float b = Hash01(ix + 1, iy);
+		const float c = Hash01(ix, iy + 1);
+		const float d = Hash01(ix + 1, iy + 1);
+		return Mix(Mix(a, b, fx), Mix(c, d, fx), fy);
+	}
+
+	float SmoothStep(float edge0, float edge1, float x)
+	{
+		const float t = std::max(0.0f, std::min(1.0f, (x - edge0) / (edge1 - edge0)));
+		return t * t * (3.0f - 2.0f * t);
+	}
+
+	const float kMistCell = 40.0f;          // 칸 하나의 크기(px)
+	const float kMistAlpha = 0.62f;         // 가장 짙을 때
+	const float kMistClearFrom = 0.24f;     // 이 밝기부터 걷히기 시작해서
+	const float kMistClearTo = 0.44f;       // 이 밝기면 다 걷힌다(발자국 밝기 0.42도 걷힌다)
+}
+
+void Game::DrawMist(Renderer* renderer)
+{
+	if (!m_ShowMist)
+	{
+		return;
+	}
+	renderer->SetTag(DrawTag::Mist);
+
+	if (m_MistImage == 0)
+	{
+		m_MistColumns = static_cast<int>(m_WindowWidth / kMistCell) + 3;
+		m_MistRows = static_cast<int>(m_WindowHeight / kMistCell) + 3;
+		m_MistImage = renderer->CreateImage(m_MistColumns, m_MistRows, true);
+		m_MistPixels.assign(static_cast<size_t>(m_MistColumns * m_MistRows * 4), 0);
+	}
+
+	const int originX = FloorToInt((m_CameraX - m_WindowWidth * 0.5f) / kMistCell) - 1;
+	const int originY = FloorToInt((m_CameraY - m_WindowHeight * 0.5f) / kMistCell) - 1;
+
+	// 짙은 어둠의 색. 배경(연기)보다 조금 더 차고 어둡다.
+	const unsigned char red = 2;
+	const unsigned char green = 3;
+	const unsigned char blue = 6;
+
+	for (int row = 0; row < m_MistRows; ++row)
+	{
+		for (int column = 0; column < m_MistColumns; ++column)
+		{
+			const int cellX = originX + column;
+			const int cellY = originY + row;
+			const float worldX = (static_cast<float>(cellX) + 0.5f) * kMistCell;
+			const float worldY = (static_cast<float>(cellY) + 0.5f) * kMistCell;
+
+			const float clear = SmoothStep(kMistClearFrom, kMistClearTo, TotalBrightness(worldX, worldY));
+
+			// 크고 느린 결 위에 작고 조금 빠른 결을 얹는다
+			const float slow = SmoothNoise(cellX * 0.18f + m_Time * 0.05f, cellY * 0.18f + m_Time * 0.03f);
+			const float quick = SmoothNoise(cellX * 0.45f - m_Time * 0.09f, cellY * 0.45f + m_Time * 0.07f);
+			const float grain = 0.62f * slow + 0.38f * quick;
+
+			const float density = (0.5f + 0.5f * grain) * (1.0f - clear);
+
+			unsigned char* pixel = &m_MistPixels[static_cast<size_t>((row * m_MistColumns + column) * 4)];
+			pixel[0] = red;
+			pixel[1] = green;
+			pixel[2] = blue;
+			pixel[3] = ToByte(density * kMistAlpha);
+		}
+	}
+
+	renderer->UpdateImage(m_MistImage, m_MistColumns, m_MistRows, m_MistPixels.data());
+	renderer->DrawImage(m_MistImage,
+	                    ToRenderX(originX * kMistCell), ToRenderY(originY * kMistCell),
+	                    m_MistColumns * kMistCell, m_MistRows * kMistCell,
+	                    1.0f, false);
+	renderer->SetTag(DrawTag::Other);
 }
 
 void Game::DrawFloatingText(const DrawContext& context, const FloatingText& text,

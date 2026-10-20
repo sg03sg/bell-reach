@@ -68,9 +68,14 @@ public:
 	// CPU에서 만든 RGBA 픽셀을 텍스처로 올려 그린다. 미니맵처럼 수천 칸을
 	// 사각형으로 하나씩 그리면 너무 비싼 것을 한 장으로 그리는 데 쓴다.
 	// 픽셀은 0행이 맨 위다. 확대해도 칸이 번지지 않게 가장 가까운 픽셀을 읽는다.
-	GLuint CreateImage(int width, int height);
+	// smooth가 true면 확대할 때 이웃 픽셀과 부드럽게 섞는다(안개처럼 작은 그림을 크게 펼칠 때).
+	GLuint CreateImage(int width, int height, bool smooth = false);
 	void UpdateImage(GLuint image, int width, int height, const unsigned char* rgba);
-	void DrawImage(GLuint image, float left, float top, float width, float height, float alpha = 1.0f);
+
+	// blocksGlow가 false면 발광 버퍼를 건드리지 않는다. 안개처럼 장면을 덮되
+	// 그 너머의 빛(적의 눈, 불씨)은 그대로 번지게 하고 싶을 때 쓴다.
+	void DrawImage(GLuint image, float left, float top, float width, float height, float alpha = 1.0f,
+	               bool blocksGlow = true);
 
 	// 이 사각형 밖에는 그려지지 않게 한다. 좌표는 다른 그리기와 같다(화면 중앙 원점, y 위쪽).
 	void SetClip(float left, float bottom, float width, float height);
