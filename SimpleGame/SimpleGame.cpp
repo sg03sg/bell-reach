@@ -25,6 +25,9 @@ but WITHOUT ANY WARRANTY.
 #include "PostProcess.h"
 #include "Monitor.h"
 #include "Profiler.h"
+#if defined(__APPLE__)
+#include "PhysicalKeyboard.h"
+#endif
 
 // 맵이 30 x 20 타일, 타일 한 칸이 32픽셀이므로 창 크기가 결정된다.
 const int WINDOW_WIDTH = 960;
@@ -223,6 +226,12 @@ void MouseInput(int button, int state, int x, int y)
 
 void KeyInput(unsigned char key, int x, int y)
 {
+	// 한글 입력기가 보낸 글자 조각은 무시한다. 조작은 자리로 받는다(PhysicalKeyboard.h).
+	if (key >= 128)
+	{
+		return;
+	}
+
 	if (key == 27)  // ESC
 	{
 		exit(0);
@@ -261,6 +270,11 @@ void KeyInput(unsigned char key, int x, int y)
 
 void KeyUpInput(unsigned char key, int x, int y)
 {
+	if (key >= 128)
+	{
+		return;
+	}
+
 	g_Input.OnKeyUp(key);
 }
 
@@ -421,6 +435,14 @@ int main(int argc, char **argv)
 	glutIdleFunc(Idle);
 	glutKeyboardFunc(KeyInput);
 	glutKeyboardUpFunc(KeyUpInput);
+
+#if defined(__APPLE__)
+	// 한글 입력 상태에서도 WASD · F · E가 먹도록 키를 글자가 아니라 자리로 읽는다.
+	if (!InstallPhysicalKeyboard(KeyInput, KeyUpInput))
+	{
+		std::cout << "키보드를 자리로 읽지 못했습니다. 한글 입력 상태에서는 조작이 안 될 수 있습니다.\n";
+	}
+#endif
 	glutSpecialFunc(SpecialKeyInput);
 	glutSpecialUpFunc(SpecialKeyUpInput);
 	glutMouseFunc(MouseInput);

@@ -15,12 +15,16 @@ BUILD    := build
 TARGET   := $(BUILD)/SimpleGame
 
 SOURCES  := $(wildcard $(SRC_DIR)/*.cpp)
-OBJECTS  := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD)/%.o,$(SOURCES))
+# macOS 전용 Objective-C++ (키보드를 자리로 읽는 PhysicalKeyboard.mm)
+MM_SOURCES := $(wildcard $(SRC_DIR)/*.mm)
+OBJECTS  := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD)/%.o,$(SOURCES)) \
+            $(patsubst $(SRC_DIR)/%.mm,$(BUILD)/%.o,$(MM_SOURCES))
 DEPS     := $(OBJECTS:.o=.d)
 
 CXXFLAGS := -std=c++17 -I$(SRC_DIR) -Wall -Wno-deprecated-declarations -MMD -MP
 LDFLAGS  := -framework OpenGL -framework GLUT \
-            -framework CoreText -framework CoreGraphics -framework CoreFoundation
+            -framework CoreText -framework CoreGraphics -framework CoreFoundation \
+            -framework AppKit
 
 CONFIG   ?= debug
 ifeq ($(CONFIG),release)
@@ -38,6 +42,9 @@ $(TARGET): $(OBJECTS)
 
 $(BUILD)/%.o: $(SRC_DIR)/%.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(BUILD)/%.o: $(SRC_DIR)/%.mm | $(BUILD)
+	$(CXX) $(CXXFLAGS) -fobjc-arc -c $< -o $@
 
 # The program loads shaders from ./Shaders, so mirror them next to the binary.
 $(BUILD)/Shaders: $(wildcard $(SRC_DIR)/Shaders/*)
