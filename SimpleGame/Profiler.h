@@ -66,8 +66,9 @@ public:
 	// 콘솔에 낼 여러 줄을 돌려주고, CSV에 한 줄 적고, 모아 둔 것을 비운다.
 	std::string Report(const State& state);
 
-	// CSV를 남길 파일. 비우면 남기지 않는다.
-	void SetLogPath(const std::string& path);
+	// CSV를 남길 폴더. 실행마다 run-<시각>.csv 를 새로 만든다.
+	// 비우면 남기지 않는다.
+	void SetLogPath(const std::string& folder);
 
 	// 실행이 끝날 때 한 번. 처음부터 끝까지의 요약을 콘솔에 낸다.
 	std::string SessionSummary() const;

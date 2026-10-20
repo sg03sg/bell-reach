@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <vector>
 
@@ -41,10 +42,31 @@ Profiler::~Profiler()
 {
 }
 
-void Profiler::SetLogPath(const std::string& path)
+//
+// 기록은 실행마다 새 파일에 남긴다.
+//
+// 한 파일에 이어 붙이면 열이 바뀐 순간(꼬리표를 하나 더 세기 시작하면
+// 바로 그렇게 된다) 머리글과 행이 어긋나 예전 기록까지 못 읽게 된다.
+// 실행마다 나누면 각 파일이 자기 머리글을 갖고, 비교는 폴더를 훑으면 된다.
+//
+void Profiler::SetLogPath(const std::string& folder)
 {
-	m_LogPath = path;
 	m_HeaderWritten = false;
+	m_LogPath.clear();
+
+	if (folder.empty())
+	{
+		return;
+	}
+
+	std::error_code error;
+	std::filesystem::create_directories(folder, error);
+	if (error)
+	{
+		return;   // 못 만들면 조용히 기록만 포기한다. 게임은 돌아가야 한다
+	}
+
+	m_LogPath = folder + "/run-" + m_RunId + ".csv";
 }
 
 void Profiler::AddFrame(const Frame& frame)
@@ -198,18 +220,7 @@ void Profiler::WriteCsvRow(const State& state, float averageFps, float worstFps,
 {
 	if (!m_HeaderWritten)
 	{
-		// 파일이 비어 있을 때만 머리글을 쓴다. 이어 붙이면 실행끼리 비교할 수 있다.
-		std::ifstream probe(m_LogPath.c_str(), std::ios::ate | std::ios::binary);
-		const bool empty = !probe || probe.tellg() == std::streampos(0);
-		probe.close();
-		if (empty)
-		{
-			WriteCsvHeader();
-		}
-		else
-		{
-			m_HeaderWritten = true;
-		}
+		WriteCsvHeader();
 	}
 
 	std::ofstream file(m_LogPath.c_str(), std::ios::app);

@@ -26,4 +26,4 @@
 .DS_Store
 
 # 성능 기록
-perf-log.csv
+perf/

@@ -99,9 +99,9 @@ void DriveScriptedWalk(float elapsed)
 // 프레임에 걸린 시간과 그린 횟수를 모아 1초마다 한 줄로 찍는다.
 Profiler g_Profiler;
 
-// 성능 기록을 남길 파일. --perf 로 바꾼다. 기본값으로도 남겨 두는 것은,
+// 성능 기록을 남길 폴더. --perf 로 바꾼다. 기본값으로도 남겨 두는 것은,
 // 나중에 "그때 왜 느렸지"를 돌아보려면 평소에 쌓여 있어야 하기 때문이다.
-std::string g_PerfLogPath = "perf-log.csv";
+std::string g_PerfLogPath = "perf";
 bool g_StartBatching = true;
 Profiler::Frame g_FrameStats;
 
