@@ -21,8 +21,8 @@ namespace Art
 	extern const float kRevealAt = 0.30f;
 
 	// ── 등불 ────────────────────────────────────────────────────
-	extern const float kLanternRadius = 155.0f;
-	extern const float kOilSeconds = 150.0f;   // 가득 찬 기름으로 버티는 시간
+	extern const float kLanternRadius = 125.0f;   // 손에 든 불이 닿는 거리. 좁아야 어둠이 가깝다
+	extern const float kOilSeconds = 80.0f;      // 가득 찬 기름으로 버티는 시간. 숲길 둘셋을 지나면 바닥난다
 
 	// ── 화톳불 ──────────────────────────────────────────────────
 	extern const float kFireRadius = 130.0f;
