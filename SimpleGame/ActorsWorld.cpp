@@ -113,6 +113,50 @@ void GroundActor::OnDraw(const DrawContext& context) const
 				1.0f);
 		}
 	}
+
+	// ── 수관 층 ──
+	// 깊은 숲(kWoods)은 나무 액터 대신 여기서 둥근 수관을 겹쳐 그린다.
+	// 조명 층 위에 그려야 등불이 숲 가장자리를 비출 때 네모난 빛 칸이 수관을
+	// 덮지 않는다. 밝기는 집·나무와 같은 규칙(StructureShade)을 따른다 —
+	// 연기 너머로 숲의 윤곽은 희미하게 보이되, 불을 비춰야 또렷해진다.
+	renderer->SetTag(DrawTag::Canopy);
+	for (int tileY = firstTileY; tileY <= lastTileY + 1; ++tileY)
+	{
+		for (int tileX = firstTileX - 1; tileX <= lastTileX + 1; ++tileX)
+		{
+			if (world.TileAt(tileX, tileY) != World::kWoods)
+			{
+				continue;
+			}
+			const float worldX = TileToWorld(tileX);
+			const float worldY = TileToWorld(tileY);
+			DrawCanopy(renderer, context.ToRenderX(worldX), context.ToRenderY(worldY), tileX, tileY,
+			           game->StructureShade(worldX, worldY) * 0.85f,
+			           game->GlowAt(worldX, worldY) * 0.25f);
+		}
+	}
+}
+
+// ═══ 울타리 ═══════════════════════════════════════════════════════
+// 울타리 한 칸이 액터 하나다. 집과 나무처럼 서 있는 것이라 사람과 앞뒤를
+// 다퉈야 하기 때문이다 — 남쪽 울타리 바로 뒤에 선 사람은 울타리에 가린다.
+WallActor::WallActor(const World::Wall& wall)
+	: Actor("Wall")
+	, m_Wall(wall)
+{
+	SetPosition(TileToWorld(wall.tileX), TileToWorld(wall.tileY));
+}
+
+void WallActor::OnDraw(const DrawContext& context) const
+{
+	const Game* game = context.game;
+
+	// 되찾은 마을이면 문 기둥에 불이 켜진다. 종탑 불빛 안에 있는가로 판단한다.
+	const bool lit = m_Wall.post && game->BeaconBrightness(WorldX(), WorldY()) > 0.3f;
+
+	DrawWall(context.renderer, context.ToRenderX(WorldX()), context.ToRenderY(WorldY()), m_Wall,
+	         game->StructureShade(WorldX(), WorldY()),
+	         game->GlowAt(WorldX(), WorldY()) * 0.3f, lit, context.time);
 }
 
 // ═══ 집 ═══════════════════════════════════════════════════════════

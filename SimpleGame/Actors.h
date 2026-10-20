@@ -52,6 +52,15 @@ private:
 	World::Tree m_Tree;
 };
 
+class WallActor : public Actor
+{
+public:
+	explicit WallActor(const World::Wall& wall);
+	void OnDraw(const DrawContext& context) const override;
+private:
+	World::Wall m_Wall;
+};
+
 class PropActor : public Actor
 {
 public:

@@ -19,10 +19,13 @@ enum class DrawTag
 	// 땅 — 액터 하나가 타일 수천 칸을 그린다
 	GroundFog,      // 안개 층. 화면에 보이는 모든 타일
 	GroundLight,    // 조명 층. 안개보다 밝은 칸만
+	Mist,           // 어둠 위에 깔리는 연무
+	Canopy,         // 깊은 숲의 수관. 땅이 그린다
 
 	// 지형 액터
 	House,
 	Tree,
+	Wall,
 	Prop,
 	Tower,
 	Sleeper,

@@ -145,15 +145,18 @@ void Game::RefreshNearbyRegions()
 
 float Game::BeaconBrightness(float worldX, float worldY) const
 {
-	// 울린 종탑 주변은 영구히 밝다. 사각형 구역이 아니라 원형으로 퍼지게 해
-	// "종소리가 닿는 곳까지"가 화면에 그대로 보이게 한다.
-	const float radius = BeaconRadius();
-	const float inner = radius * 0.7f;
+	// 울린 종탑 둘레는 영구히 밝다. 빛은 마을 울타리 모양의 사각형으로 퍼진다 —
+	// 울타리 안은 한껏 밝고, 문 밖 몇 걸음에서 꺼진다. "종소리가 닿는 곳"이
+	// 곧 울타리 안이고, 어둠은 문 앞에서 멈춘다(적은 빛 안으로 들어오지 못한다).
+	// 거리는 가로·세로 중 먼 쪽으로 잰다.
+	const float scale = Mods().beaconScale;
+	const float radius = BeaconRadius() * scale;
+	const float inner = BeaconInner() * scale;
 
 	float best = 0.0f;
 	for (const Beacon& beacon : m_Beacons)
 	{
-		const float distance = Distance(worldX, worldY, beacon.x, beacon.y);
+		const float distance = std::max(std::fabs(worldX - beacon.x), std::fabs(worldY - beacon.y));
 		if (distance >= radius)
 		{
 			continue;
@@ -492,6 +495,8 @@ void Game::RebuildMinimap(Renderer* renderer)
 			else if (tile == World::kPlaza) { color = kMapPlaza; }
 			else if (tile == World::kHouse) { color = kMapHouse; }
 			else if (tile == World::kTree)  { color = kMapTree; }
+			else if (tile == World::kWall)  { color = kMapPlaza; }   // 울타리는 밝은 돌빛 선으로
+			else if (tile == World::kWoods) { color = kMapTree; }
 
 			const float jitter = static_cast<float>((tileX * 31 + tileY * 17) & 3) * 0.012f;
 			pixel[0] = ToByte(color[0] + jitter);
@@ -969,6 +974,7 @@ void Game::Initialize(int windowWidth, int windowHeight, unsigned int seed)
 	// 씨앗 하나로 섬 전체가 정해진다. 실행할 때마다 다른 섬이 된다.
 	m_World = World(seed);
 	m_Regions = Regions(seed);
+	m_World.SetRoute(&m_Regions);   // 어느 구역이 마을이고 문이 어디로 났는지 지형이 알아야 한다
 	m_Random.seed(seed);
 	m_Light.Configure(kLightCell);
 
@@ -1052,6 +1058,14 @@ void Game::LoadChunk(int chunkX, int chunkY)
 	for (size_t i = 0; i < trees.size(); ++i)
 	{
 		Actor* actor = m_Scene.Spawn(std::unique_ptr<Actor>(new TreeActor(trees[i])));
+		actor->SetStreamKey(key);
+	}
+
+	std::vector<World::Wall> walls;
+	m_World.CollectWalls(firstTileX, firstTileY, lastTileX, lastTileY, walls);
+	for (size_t i = 0; i < walls.size(); ++i)
+	{
+		Actor* actor = m_Scene.Spawn(std::unique_ptr<Actor>(new WallActor(walls[i])));
 		actor->SetStreamKey(key);
 	}
 
@@ -1215,11 +1229,14 @@ float Game::GlowAt(float worldX, float worldY) const
 
 float Game::PowerAt(float worldX, float worldY) const
 {
-	// 처음 마을에서 멀어질수록 적이 강해진다. 마을 하나를 건널 때마다 18%.
+	// 몇 번째 마을인가로 적의 세기가 정해진다. 마을 하나를 지날 때마다 18%.
+	// 길이 한 줄이므로 순서가 곧 여정의 깊이다. 원점에서의 거리로 재면
+	// 길이 꺾여 돌아오는 곳에서 난이도가 뒤로 물러난다.
+	// 두 마을 사이 숲길은 반씩 두 마을에 걸쳐 있어, 다음 마을에 가까워질수록 세진다.
 	const int regionX = Regions::RegionOfTile(FloorToInt(worldX / kTileSize));
 	const int regionY = Regions::RegionOfTile(FloorToInt(worldY / kTileSize));
-	const int villagesAway = std::max(std::abs(regionX), std::abs(regionY));
-	return 1.0f + 0.18f * static_cast<float>(villagesAway);
+	const int village = m_Regions.VillageIndex(regionX, regionY);
+	return 1.0f + 0.18f * static_cast<float>(std::max(0, village));
 }
 
 bool Game::IsRingingAt(int regionX, int regionY) const
@@ -1385,7 +1402,8 @@ void Game::SpawnEnemies(float deltaSeconds)
 	const int group = std::min(limit - alive, 1 + static_cast<int>(RandomRange(0.0f, 2.99f)));
 	for (int g = 0; g < group; ++g)
 	{
-		for (int attempt = 0; attempt < 10; ++attempt)
+		// 숲길은 좁아서 아무 데나 고르면 대부분 수풀이다. 넉넉히 찾아본다.
+		for (int attempt = 0; attempt < 24; ++attempt)
 		{
 			const float angle = RandomRange(0.0f, 6.2831853f);
 			const float distance = RandomRange(430.0f, 640.0f);

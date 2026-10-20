@@ -54,6 +54,8 @@ namespace Art
 	extern const float kGrassColor[3] = { 0.20f, 0.25f, 0.17f };
 	extern const float kPathColor[3]  = { 0.36f, 0.29f, 0.21f };
 	extern const float kPlazaColor[3] = { 0.33f, 0.33f, 0.35f };
+	extern const float kCanopy[3]      = { 0.07f, 0.12f, 0.08f };
+	extern const float kCanopyLight[3] = { 0.11f, 0.18f, 0.11f };
 	extern const float kFlame[3]      = { 0.98f, 0.72f, 0.36f };
 	extern const float kRubble[3]     = { 0.42f, 0.38f, 0.31f };
 	extern const float kSupply[3]     = { 0.45f, 0.62f, 0.52f };
@@ -97,9 +99,24 @@ namespace Art
 		return tile * kTileSize + kTileSize * 0.5f;
 	}
 
+	float VillageWallDistance()
+	{
+		return static_cast<float>((World::kVillageCenter - World::kWallLow) * kTileSize);   // 512
+	}
+
+	float VillageLane()
+	{
+		return static_cast<float>((World::kVillageCenter - World::kLaneLow) * kTileSize);   // 480
+	}
+
+	float BeaconInner()
+	{
+		return VillageWallDistance() - 42.0f;    // 470 — 울타리 바로 안쪽까지 한껏 밝다
+	}
+
 	float BeaconRadius()
 	{
-		return Regions::RegionTileSpan() * kTileSize * 0.55f;
+		return VillageWallDistance() + 128.0f;   // 640 — 문 밖 네 칸까지 새어 나간다
 	}
 
 	// ══ 오브젝트 도안 ════════════════════════════════════════════
@@ -406,6 +423,17 @@ namespace Art
 			base = kPlazaColor;
 			shade = ((tileX + tileY) & 1) ? 1.0f : 0.88f;
 		}
+		else if (tile == World::kWoods)
+		{
+			// 깊은 숲의 바닥. 위에 수관을 따로 그리므로 어둡게 깐다.
+			base = kCanopy;
+			shade = 0.55f + static_cast<float>((hash >> 8) & 0xFFu) / 255.0f * 0.25f;
+		}
+		else if (tile == World::kWall)
+		{
+			base = kPathColor;   // 울타리 밑은 다져진 흙
+			shade = 0.8f;
+		}
 
 		for (int i = 0; i < 3; ++i)
 		{
@@ -586,6 +614,248 @@ namespace Art
 			r->DrawCircle(x + 8.0f * size + sway * 0.7f, y + 24.0f * size, 10.0f * size, LitTint(leaf, shade, warmth));
 			r->DrawCircle(x - 2.5f * size + sway, y + 32.0f * size, 7.0f * size, LitTint(leafLight, shade * 1.1f, warmth));
 		}
+	}
+
+	//
+	// 울타리 한 칸.
+	//
+	// 첫 마을은 돌 성벽, 나머지 마을은 나무 말뚝 울타리다. 화면이 남쪽에서
+	// 비스듬히 내려다보므로, 동서로 뻗은 북·남쪽 울타리는 말뚝이 옆으로
+	// 늘어서 보이고, 남북으로 뻗은 서·동쪽 울타리는 말뚝이 앞뒤로 겹쳐 보인다.
+	// 겹친 것은 먼 것(위)부터 그린다.
+	//
+	// 문 옆 기둥은 높고 굵다. 되찾은 마을이면 기둥에 등(나무 울타리)이나
+	// 화로(성벽)가 켜져, 멀리서도 들어갈 문이 보인다.
+	//
+	void DrawWall(Renderer* r, float x, float y, const World::Wall& wall,
+	              float shade, float warmth, bool lit, float time)
+	{
+		const unsigned int hash = PropHash(wall.tileX * 5 + 1, wall.tileY * 3 + 2);
+		const bool alongX = (wall.side == World::kSideNorth || wall.side == World::kSideSouth);
+
+		auto lamp = [&](float lampX, float lampY)
+		{
+			if (!lit)
+			{
+				return;
+			}
+			const float flicker = 0.85f + 0.15f * std::sin(time * 9.0f + static_cast<float>(hash % 97u));
+			const Color glow = { kFlame[0], kFlame[1], kFlame[2], 0.9f };
+			r->DrawCircle(lampX, lampY, 3.2f, glow, 2.4f * flicker);
+		};
+
+		if (wall.stone)
+		{
+			const Color stone = LitTint(kStone, shade, warmth);
+			const Color dark = LitTint(kStoneDark, shade, warmth);
+			const Color top = LitTint(kStone, shade * 1.15f, warmth);
+
+			if (wall.post)
+			{
+				// 문 기둥 — 위에 화로
+				r->DrawRoundRect(x, y + 23.0f, 16.0f, 46.0f, 2.0f, stone);
+				r->DrawRoundRect(x, y + 47.0f, 20.0f, 5.0f, 1.0f, top);
+				r->DrawRoundRect(x, y + 12.0f, 16.0f, 1.2f, 0.0f, dark);
+				r->DrawRoundRect(x, y + 28.0f, 16.0f, 1.2f, 0.0f, dark);
+				lamp(x, y + 53.0f);
+				return;
+			}
+			if (wall.corner)
+			{
+				// 모서리 망루
+				r->DrawRoundRect(x, y + 19.0f, 36.0f, 38.0f, 2.0f, stone);
+				r->DrawRoundRect(x, y + 36.0f, 36.0f, 2.5f, 0.0f, top);
+				for (int i = -1; i <= 1; ++i)
+				{
+					r->DrawRoundRect(x + i * 12.0f, y + 41.0f, 8.0f, 7.0f, 1.0f, stone);
+				}
+				r->DrawRoundRect(x, y + 12.0f, 36.0f, 1.2f, 0.0f, dark);
+				r->DrawRoundRect(x, y + 25.0f, 36.0f, 1.2f, 0.0f, dark);
+				return;
+			}
+			if (alongX)
+			{
+				// 가로로 뻗은 성벽 — 돌 두 켜와 그 위 성가퀴
+				r->DrawRoundRect(x, y + 13.0f, 32.0f, 26.0f, 1.5f, stone);
+				r->DrawRoundRect(x, y + 13.0f, 32.0f, 1.2f, 0.0f, dark);
+				const float joint = ((wall.tileX & 1) == 0) ? -6.0f : 6.0f;   // 줄눈을 엇갈리게
+				r->DrawRoundRect(x + joint, y + 6.5f, 1.2f, 12.0f, 0.0f, dark);
+				r->DrawRoundRect(x - joint, y + 19.5f, 1.2f, 12.0f, 0.0f, dark);
+				r->DrawRoundRect(x, y + 25.5f, 32.0f, 2.0f, 0.0f, top);
+				r->DrawRoundRect(x - 8.0f, y + 29.5f, 10.0f, 6.0f, 1.0f, stone);
+				r->DrawRoundRect(x + 8.0f, y + 29.5f, 10.0f, 6.0f, 1.0f, stone);
+				return;
+			}
+			// 세로로 뻗은 성벽 — 앞뒤로 두 덩이
+			for (int i = 0; i < 2; ++i)
+			{
+				const float groundY = y + 8.0f - 16.0f * static_cast<float>(i);   // 먼 것(위)부터
+				r->DrawRoundRect(x, groundY + 14.0f, 18.0f, 28.0f, 1.5f, i == 0 ? dark : stone);
+				r->DrawRoundRect(x, groundY + 30.5f, 12.0f, 6.0f, 1.0f, stone);
+				r->DrawRoundRect(x, groundY + 14.0f, 18.0f, 1.2f, 0.0f, dark);
+			}
+			return;
+		}
+
+		// ── 나무 말뚝 울타리 ──
+		const Color wood = LitTint(kWood, shade, warmth);
+		const Color dark = LitTint(kWoodDark, shade, warmth);
+
+		if (wall.post)
+		{
+			// 문 기둥 — 위에 등
+			r->DrawRoundRect(x, y + 22.0f, 10.0f, 44.0f, 2.0f, dark);
+			r->DrawTriangle(x, y + 47.0f, 10.0f, 7.0f, dark);
+			r->DrawRoundRect(x, y + 34.0f, 14.0f, 3.0f, 1.0f, wood);   // 등을 거는 가로대
+			lamp(x + 5.0f, y + 30.0f);
+			return;
+		}
+		if (wall.corner)
+		{
+			r->DrawRoundRect(x, y + 18.0f, 11.0f, 36.0f, 2.5f, dark);
+			r->DrawTriangle(x, y + 39.0f, 11.0f, 7.0f, dark);
+			return;
+		}
+		if (alongX)
+		{
+			// 가로 울타리 — 가로대 두 줄 위로 말뚝 넷
+			r->DrawRoundRect(x, y + 9.0f, 32.0f, 3.0f, 1.0f, dark);
+			r->DrawRoundRect(x, y + 21.0f, 32.0f, 3.0f, 1.0f, dark);
+			for (int i = 0; i < 4; ++i)
+			{
+				const float stakeX = x - 12.0f + 8.0f * static_cast<float>(i);
+				const float height = 25.0f + static_cast<float>((hash >> (i * 3)) & 7u) * 0.8f;
+				r->DrawRoundRect(stakeX, y + height * 0.5f, 6.0f, height, 1.5f, wood);
+				r->DrawTriangle(stakeX, y + height + 2.5f, 6.0f, 5.0f, wood);
+			}
+			return;
+		}
+		// 세로 울타리 — 말뚝이 앞뒤로 겹쳐 선다
+		for (int i = 0; i < 2; ++i)
+		{
+			const float groundY = y + 8.0f - 16.0f * static_cast<float>(i);   // 먼 것(위)부터
+			const float height = 25.0f + static_cast<float>((hash >> (i * 4)) & 7u) * 0.8f;
+			const Color& stake = (i == 0) ? dark : wood;
+			r->DrawRoundRect(x, groundY + height * 0.5f, 7.0f, height, 1.5f, stake);
+			r->DrawTriangle(x, groundY + height + 2.5f, 7.0f, 5.0f, stake);
+		}
+	}
+
+	void DrawTorch(Renderer* r, float x, float y, float time, float seed)
+	{
+		// 땅에 꽂은 장대, 쇠 받침, 그 위에서 일렁이는 불
+		const float flicker = 0.8f + 0.2f * std::sin(time * 11.0f + seed * 3.1f)
+		                    + 0.1f * std::sin(time * 23.0f + seed);
+		DrawShadow(r, x, y, 5.0f, 0.3f);
+		r->DrawRoundRect(x, y + 15.0f, 4.0f, 30.0f, 1.5f, Tint(kWoodDark));
+		r->DrawRoundRect(x, y + 31.0f, 9.0f, 4.0f, 1.5f, Tint(kMetal, 0.9f));
+		r->DrawTriangle(x, y + 39.0f, 9.0f, 14.0f * flicker, Tint(kEmber), 0.0f, 1.6f * flicker);
+		r->DrawTriangle(x, y + 37.5f, 5.0f, 9.0f * flicker, Tint(kFlame), 0.0f, 2.6f * flicker);
+	}
+
+	//
+	// 마을 사람이 제 집 둘레에 놓는 것. 돈이 모일 때마다 하나씩 는다.
+	// 간판과 깃발은 그 사람의 빛깔이라, 누구네 구역인지 멀리서도 알 수 있다.
+	//
+	void DrawDecor(Renderer* r, float x, float y, Decor kind, const float tint[3],
+	               float shade, float warmth, float time, unsigned int seed)
+	{
+		const Color wood = LitTint(kWood, shade, warmth);
+		const Color dark = LitTint(kWoodDark, shade, warmth);
+		const Color own = LitTint(tint, shade, warmth);
+
+		switch (kind)
+		{
+		case Decor::Sign:
+		{
+			DrawShadow(r, x, y, 9.0f, 0.3f);
+			r->DrawRoundRect(x - 8.0f, y + 14.0f, 3.0f, 28.0f, 1.0f, dark);
+			r->DrawRoundRect(x + 8.0f, y + 14.0f, 3.0f, 28.0f, 1.0f, dark);
+			r->DrawRoundRect(x, y + 26.0f, 24.0f, 13.0f, 2.0f, own);
+			r->DrawRoundRect(x, y + 26.0f, 16.0f, 2.0f, 0.5f, dark);
+			r->DrawRoundRect(x, y + 21.5f, 10.0f, 1.6f, 0.5f, dark);
+			break;
+		}
+
+		case Decor::Lantern:
+		{
+			const float flicker = 0.85f + 0.15f * std::sin(time * 8.0f + static_cast<float>(seed % 97u));
+			DrawShadow(r, x, y, 5.0f, 0.3f);
+			r->DrawRoundRect(x, y + 20.0f, 4.0f, 40.0f, 1.5f, dark);
+			r->DrawRoundRect(x + 5.0f, y + 38.0f, 11.0f, 2.0f, 0.5f, dark);
+			r->DrawRoundRect(x + 9.0f, y + 32.0f, 7.0f, 9.0f, 2.0f, Tint(kBronze, shade));
+			const Color glow = { kFlame[0], kFlame[1], kFlame[2], 0.95f };
+			r->DrawCircle(x + 9.0f, y + 32.0f, 2.8f, glow, 2.2f * flicker);
+			break;
+		}
+
+		case Decor::Planter:
+		{
+			DrawShadow(r, x, y, 8.0f, 0.3f);
+			r->DrawRoundRect(x, y + 5.0f, 15.0f, 10.0f, 3.0f, LitTint(kRust, shade, warmth));
+			const Color leaf = LitTint(kLeaf, shade, warmth);
+			r->DrawCircle(x - 4.0f, y + 13.0f, 4.5f, leaf);
+			r->DrawCircle(x + 4.0f, y + 13.5f, 4.5f, leaf);
+			r->DrawCircle(x, y + 16.0f, 4.5f, leaf);
+			r->DrawCircle(x - 3.0f, y + 17.0f, 1.8f, own);
+			r->DrawCircle(x + 3.5f, y + 15.5f, 1.8f, own);
+			r->DrawCircle(x + 0.5f, y + 19.5f, 1.8f, own);
+			break;
+		}
+
+		case Decor::Banner:
+		{
+			const float wave = std::sin(time * 2.4f + static_cast<float>(seed % 61u)) * 2.0f;
+			DrawShadow(r, x, y, 4.0f, 0.3f);
+			r->DrawSegment(x, y, x, y + 46.0f, 2.2f, dark);
+			r->DrawRoundRect(x + 8.0f + wave * 0.3f, y + 37.0f, 14.0f, 17.0f, 1.0f, own, wave * 0.02f);
+			r->DrawTriangle(x + 8.0f + wave * 0.5f, y + 26.5f, 14.0f, 6.0f, own, 3.14159265f);
+			break;
+		}
+
+		case Decor::Bench:
+		{
+			DrawShadow(r, x, y, 14.0f, 0.3f);
+			r->DrawRoundRect(x - 10.0f, y + 3.5f, 3.0f, 7.0f, 0.5f, dark);
+			r->DrawRoundRect(x + 10.0f, y + 3.5f, 3.0f, 7.0f, 0.5f, dark);
+			r->DrawRoundRect(x, y + 8.0f, 27.0f, 4.0f, 1.0f, wood);
+			r->DrawRoundRect(x, y + 15.0f, 27.0f, 3.0f, 1.0f, wood);
+			break;
+		}
+
+		case Decor::Crates:
+		default:
+		{
+			DrawShadow(r, x, y, 13.0f, 0.3f);
+			r->DrawRoundRect(x - 6.0f, y + 6.5f, 13.0f, 13.0f, 1.5f, wood);
+			r->DrawRoundRect(x + 7.0f, y + 6.0f, 12.0f, 12.0f, 1.5f, LitTint(kWood, shade * 0.9f, warmth));
+			r->DrawRoundRect(x + 0.5f, y + 17.5f, 12.0f, 11.0f, 1.5f, LitTint(kWood, shade * 1.08f, warmth));
+			r->DrawRoundRect(x - 6.0f, y + 6.5f, 13.0f, 1.4f, 0.0f, dark);
+			r->DrawRoundRect(x + 0.5f, y + 17.5f, 12.0f, 1.4f, 0.0f, dark);
+			break;
+		}
+		}
+	}
+
+	void DrawCanopy(Renderer* r, float x, float y, int tileX, int tileY, float shade, float warmth)
+	{
+		// 지나갈 수 없는 숲 한 칸. 둥근 덩어리로 그렸더니 그냥 어두운 땅처럼 보여
+		// "아무것도 없는데 못 간다"가 되었다. 뾰족한 침엽수 두 겹으로 그려
+		// 한눈에 나무가 빽빽한 곳으로 읽히게 한다. 칸마다 자리와 키를 흔들어
+		// 이웃 칸과 겹치면 줄 맞춰 심은 것이 아니라 우거진 숲이 된다.
+		const unsigned int hash = PropHash(tileX * 3 + 11, tileY * 5 + 7);
+		const float jitterX = (static_cast<float>(hash & 0xFFu) / 255.0f - 0.5f) * 12.0f;
+		const float jitterY = (static_cast<float>((hash >> 8) & 0xFFu) / 255.0f - 0.5f) * 8.0f;
+		const float size = 0.85f + static_cast<float>((hash >> 16) & 0xFu) / 15.0f * 0.35f;
+		const float tone = 0.8f + static_cast<float>((hash >> 20) & 0xFu) / 15.0f * 0.35f;
+
+		const float baseX = x + jitterX;
+		const float baseY = y + jitterY - 8.0f;   // 밑동은 칸 아래쪽. 위로 솟는다
+
+		r->DrawTriangle(baseX, baseY + 13.0f * size, 30.0f * size, 26.0f * size,
+		                LitTint(kCanopy, shade * tone, warmth));
+		r->DrawTriangle(baseX, baseY + 28.0f * size, 21.0f * size, 20.0f * size,
+		                LitTint(kCanopyLight, shade * tone, warmth));
 	}
 
 	// 미니맵 표식. 종류마다 모양과 색을 다르게 해 한눈에 구분되게 한다.

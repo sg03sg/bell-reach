@@ -50,6 +50,8 @@ namespace Art
 	extern const float kGrassColor[3];
 	extern const float kPathColor[3];
 	extern const float kPlazaColor[3];
+	extern const float kCanopy[3];        // 깊은 숲의 수관
+	extern const float kCanopyLight[3];
 	extern const float kFlame[3];
 	extern const float kRubble[3];
 	extern const float kSupply[3];
@@ -133,7 +135,13 @@ namespace Art
 	int FloorToInt(float value);
 	float Distance(float ax, float ay, float bx, float by);
 	float TileToWorld(int tile);
+	// 종탑 불빛은 울타리 모양의 사각형이다. 거리는 가로·세로 중 먼 쪽(체비쇼프)으로 잰다.
+	//   BeaconInner  — 여기까지는 한껏 밝다(울타리 바로 안쪽)
+	//   BeaconRadius — 여기서 꺼진다(문 앞 네 칸). 어둠은 이 너머에서 멈춘다
 	float BeaconRadius();
+	float BeaconInner();
+	float VillageWallDistance();   // 종탑에서 울타리까지
+	float VillageLane();           // 종탑에서 울타리 안쪽 안길까지
 	unsigned int PropHash(int x, int y);
 	unsigned char ToByte(float value);
 
@@ -155,6 +163,20 @@ namespace Art
 	               float shade, float warmth, bool lived, float time);
 	void DrawTree(Renderer* r, float x, float y, const World::Tree& tree,
 	              float shade, float warmth, float time);
+
+	// 울타리 한 칸. (x, y)는 칸 한가운데의 땅. lit이면 문 기둥에 불이 켜진다.
+	void DrawWall(Renderer* r, float x, float y, const World::Wall& wall,
+	              float shade, float warmth, bool lit, float time);
+
+	// 상인에게 사서 세운 횃불
+	void DrawTorch(Renderer* r, float x, float y, float time, float seed);
+
+	// 마을 사람이 집 둘레에 놓은 장식. tint는 그 사람의 빛깔
+	void DrawDecor(Renderer* r, float x, float y, Decor kind, const float tint[3],
+	               float shade, float warmth, float time, unsigned int seed);
+
+	// 깊은 숲 한 칸의 수관. 나무 액터 대신 땅이 그린다.
+	void DrawCanopy(Renderer* r, float x, float y, int tileX, int tileY, float shade, float warmth);
 	void DrawMapMarker(Renderer* r, int marker, float x, float y, float warmth);
 
 	// ── 놓인 것들 ──

@@ -9,8 +9,11 @@ const char* DrawTagName(DrawTag tag)
 	{
 	case DrawTag::GroundFog:   return "땅-안개";
 	case DrawTag::GroundLight: return "땅-조명";
+	case DrawTag::Mist:        return "연무";
+	case DrawTag::Canopy:      return "수풀";
 	case DrawTag::House:       return "집";
 	case DrawTag::Tree:        return "나무";
+	case DrawTag::Wall:        return "울타리";
 	case DrawTag::Prop:        return "물건";
 	case DrawTag::Tower:       return "종탑";
 	case DrawTag::Sleeper:     return "굳은사람";
@@ -37,8 +40,11 @@ const char* DrawTagKey(DrawTag tag)
 	{
 	case DrawTag::GroundFog:   return "ground_fog";
 	case DrawTag::GroundLight: return "ground_light";
+	case DrawTag::Mist:        return "mist";
+	case DrawTag::Canopy:      return "canopy";
 	case DrawTag::House:       return "house";
 	case DrawTag::Tree:        return "tree";
+	case DrawTag::Wall:        return "wall";
 	case DrawTag::Prop:        return "prop";
 	case DrawTag::Tower:       return "tower";
 	case DrawTag::Sleeper:     return "sleeper";
@@ -74,6 +80,7 @@ DrawTag DrawTagFromActorName(const char* name)
 		{ "Ground",     DrawTag::GroundFog },
 		{ "House",      DrawTag::House },
 		{ "Tree",       DrawTag::Tree },
+		{ "Wall",       DrawTag::Wall },
 		{ "Prop",       DrawTag::Prop },
 		{ "Tower",      DrawTag::Tower },
 		{ "Sleeper",    DrawTag::Sleeper },
