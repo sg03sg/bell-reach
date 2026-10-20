@@ -55,6 +55,17 @@ struct Enemy
 	float homeY = 0.0f;
 	bool engaged = false;     // 플레이어를 쫓는 중인가
 	float burstTimer = 0.0f;  // 어둠 구슬을 흩뿌리기까지
+
+	// 첫 마을 외곽을 두드리는 무리. 빛 안으로는 못 들어오고 가장자리에서 서성인다.
+	// 마을 사람들이 순찰하며 청소하는 대상이다.
+	bool outskirt = false;
+
+	// 마지막으로 때린 마을 사람(번호). 쓰러지면 그 사람이 현상금을 받는다. -1이면 플레이어나 아무도 아님
+	int lastHitBy = -1;
+
+	// 봉인의 글이나 독 연기에 묶여 발이 느려진 상태
+	float slowTimer = 0.0f;
+	float slowFactor = 1.0f;
 };
 
 // 등불에서 날아가는 불씨
@@ -83,7 +94,8 @@ enum class PickupKind
 	Soul,       // 영혼석 — 경험치
 	Heal,       // 회복약 — 체력
 	Weapon,     // 강화석 — 무기 강화
-	Magnet      // 자석 — 한동안 떨어진 것을 전부 끌어온다
+	Magnet,     // 자석 — 한동안 떨어진 것을 전부 끌어온다
+	Gold        // 골드 — 마을에서 물건과 치료와 소식을 산다
 };
 
 struct Pickup
@@ -121,5 +133,11 @@ struct PlayerCombat
 	float magnetTime = 0.0f;
 	float attackCooldown = 0.0f;
 	float levelUpGlow = 0.0f;
+	float shield = 0.0f;           // 수도승의 기도가 씌운 보호막이 남은 시간
 	int deaths = 0;
+
+	// 마을에서 쓰는 것
+	int gold = 0;
+	int torches = 0;               // 상인에게 산 횃불. R로 그 자리에 세운다
+	int healPacks = 0;             // 상인에게 산 회복약. Q로 마신다
 };

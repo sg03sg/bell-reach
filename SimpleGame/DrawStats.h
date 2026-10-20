@@ -30,6 +30,7 @@ enum class DrawTag
 	Tower,
 	Sleeper,
 	Fire,
+	Villager,
 
 	// 살아 있는 것들
 	Player,
@@ -39,6 +40,7 @@ enum class DrawTag
 	Orb,
 	Pickup,
 	FloatText,
+	Skill,          // 동행자 스킬 효과와 장판
 
 	// 화면에 붙는 것
 	Hud,

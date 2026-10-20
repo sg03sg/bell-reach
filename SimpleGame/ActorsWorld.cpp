@@ -288,6 +288,59 @@ void SleeperActor::OnDraw(const DrawContext& context) const
 	            region.warmth, context.game->IsTalkingWith(m_RegionX, m_RegionY), facing, context.time);
 }
 
+// ═══ 횃불 ═════════════════════════════════════════════════════════
+TorchActor::TorchActor(float worldX, float worldY)
+	: Actor("Torch")
+	, m_Seed(worldX * 0.017f + worldY * 0.029f)
+{
+	SetPosition(worldX, worldY);
+}
+
+void TorchActor::OnDraw(const DrawContext& context) const
+{
+	DrawTorch(context.renderer, context.ToRenderX(WorldX()), context.ToRenderY(WorldY()),
+	          context.time, m_Seed);
+}
+
+bool TorchActor::GetLight(float& radius, bool& leavesTrail) const
+{
+	// 화톳불보다 작게 비추지만 꺼지지 않는다
+	radius = 95.0f;
+	leavesTrail = false;
+	return true;
+}
+
+// ═══ 장식 ═════════════════════════════════════════════════════════
+DecorActor::DecorActor(Decor kind, float worldX, float worldY, const float tint[3], unsigned int seed)
+	: Actor("Decor")
+	, m_Kind(kind)
+	, m_Seed(seed)
+{
+	SetPosition(worldX, worldY);
+	m_Tint[0] = tint[0];
+	m_Tint[1] = tint[1];
+	m_Tint[2] = tint[2];
+}
+
+void DecorActor::OnDraw(const DrawContext& context) const
+{
+	DrawDecor(context.renderer, context.ToRenderX(WorldX()), context.ToRenderY(WorldY()), m_Kind, m_Tint,
+	          context.game->StructureShade(WorldX(), WorldY()),
+	          context.game->GlowAt(WorldX(), WorldY()) * 0.3f, context.time, m_Seed);
+}
+
+bool DecorActor::GetLight(float& radius, bool& leavesTrail) const
+{
+	// 등 기둥만 빛난다
+	if (m_Kind != Decor::Lantern)
+	{
+		return false;
+	}
+	radius = 70.0f;
+	leavesTrail = false;
+	return true;
+}
+
 // ═══ 화톳불 ═══════════════════════════════════════════════════════
 FireActor::FireActor(float worldX, float worldY, float radius)
 	: Actor("Bonfire")

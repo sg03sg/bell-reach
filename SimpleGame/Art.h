@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Combat.h"
+#include "Professions.h"
 #include "Regions.h"
 #include "Renderer.h"
 #include "World.h"

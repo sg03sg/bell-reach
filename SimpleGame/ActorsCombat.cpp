@@ -3,6 +3,7 @@
 
 #include "Art.h"
 #include "Game.h"
+#include "Professions.h"
 #include "Progression.h"
 #include "Renderer.h"
 #include "SceneGraph.h"
@@ -180,6 +181,17 @@ void EnemyActor::OnUpdate(const ActorContext& context)
 		speed *= kLightSlow;
 	}
 
+	// 봉인이나 독에 묶여 있으면 더 느리다. 풀리면 제 속도로 돌아온다.
+	if (m_Data.slowTimer > 0.0f)
+	{
+		m_Data.slowTimer -= deltaSeconds;
+		speed *= m_Data.slowFactor;
+		if (m_Data.slowTimer <= 0.0f)
+		{
+			m_Data.slowFactor = 1.0f;
+		}
+	}
+
 	float moveX = 0.0f;
 	float moveY = 0.0f;
 	const float stopAt = (warden && !m_Data.engaged) ? 2.0f : type.radius + kPlayerRadius * 0.6f;
@@ -266,6 +278,8 @@ void EnemyActor::TakeDamage(const ActorContext& context, float damage, float fro
 
 	m_Data.health -= damage;
 	m_Data.hitFlash = 0.12f;
+	m_Data.lastHitBy = m_PendingHitBy;
+	m_PendingHitBy = -1;
 
 	// 맞은 반대쪽으로 밀려난다. 종탑지기는 거의 밀리지 않는다.
 	float awayX = WorldX() - fromX;
@@ -295,11 +309,42 @@ void EnemyActor::TakeDamage(const ActorContext& context, float damage, float fro
 	}
 }
 
+void EnemyActor::ApplySlow(float factor, float seconds)
+{
+	// 여러 겹이 걸리면 가장 센 것 하나만 친다. 겹쳐 곱하면 멈춰 버린다.
+	m_Data.slowFactor = (m_Data.slowTimer > 0.0f) ? std::min(m_Data.slowFactor, factor) : factor;
+	m_Data.slowTimer = std::max(m_Data.slowTimer, seconds);
+}
+
+void EnemyActor::Push(float velocityX, float velocityY)
+{
+	// 종탑지기는 거의 밀리지 않는다. TakeDamage의 밀림과 같은 비율이다.
+	const float scale = IsWarden() ? 0.15f : 1.0f;
+	m_Data.knockX += velocityX * scale;
+	m_Data.knockY += velocityY * scale;
+}
+
 void EnemyActor::Die(const ActorContext& context)
 {
 	m_Data.health = 0.0f;
 	m_Data.dying = 0.001f;
 	DropLoot(context);
+
+	// 마을 사람이 마지막 한 방을 넣었으면 현상금을 받는다. 사냥꾼은 세 배.
+	// 마을의 돈은 대부분 여기서 생긴다 — 문 밖 어둠이 곧 마을의 벌이다.
+	if (m_Data.lastHitBy >= 0)
+	{
+		if (VillagerActor* hunter = context.game->FindVillager(m_Data.lastHitBy))
+		{
+			const int bounty = Prices::Bounty(hunter->GetProfession() == Profession::Hunter, IsWarden());
+			hunter->AddGold(bounty);
+			if (hunter->GetProfession() == Profession::Hunter)
+			{
+				context.game->SpawnFloatingText(hunter->WorldX(), hunter->WorldY() - 62.0f, "현상금",
+				                                -1, kColorGold, 12.0f);
+			}
+		}
+	}
 
 	if (IsWarden())
 	{
@@ -352,6 +397,15 @@ void EnemyActor::DropLoot(const ActorContext& context)
 	if (game->Roll(type.magnetChance))
 	{
 		drop(PickupKind::Magnet, 1);
+	}
+
+	// 골드. 마을에서 물건과 치료와 소식을 사는 돈이다.
+	// 섬 안쪽의 적일수록 더 많이 지니고 있다.
+	const int coins = warden ? 8 : (m_Data.kind == EnemyKind::Husk ? 3 : 2);
+	for (int i = 0; i < coins; ++i)
+	{
+		const float base = warden ? 5.0f : game->RandomRange(1.0f, 2.99f);
+		drop(PickupKind::Gold, std::max(1, static_cast<int>(base * m_Data.power)));
 	}
 }
 
@@ -425,6 +479,30 @@ void ProjectileActor::OnUpdate(const ActorContext& context)
 				m_Data.travel = 0.0f;
 			}
 			break;
+		}
+	}
+
+	// 마을 사람도 맞는다. 적을 다 살펴본 뒤에 보므로, 싸우는 도중에
+	// 적 대신 사람이 맞는 일은 없다.
+	// 사람은 꿰뚫지 않는다 — 한 명을 맞히면 거기서 멈춘다.
+	if (m_Data.travel > 0.0f)
+	{
+		const std::vector<VillagerActor*>& villagers = context.game->Villagers();
+		for (size_t i = 0; i < villagers.size(); ++i)
+		{
+			VillagerActor* villager = villagers[i];
+			if (villager->IsDead())
+			{
+				continue;
+			}
+
+			if (Distance(WorldX(), WorldY(), villager->WorldX(), villager->BodyCenterY())
+			    < villager->Radius() + 4.0f)
+			{
+				villager->TakeDamage(context, m_Data.damage);
+				m_Data.travel = 0.0f;
+				break;
+			}
 		}
 	}
 
@@ -518,7 +596,9 @@ void PickupActor::OnUpdate(const ActorContext& context)
 	            WorldY() + m_Data.vy * context.deltaSeconds);
 
 	const bool magnet = player->Combat().magnetTime > 0.0f;
-	const float attract = magnet ? kMagnetRadius : Progression::PickupRadius(player->Combat().level);
+	const float attract = magnet ? kMagnetRadius
+	                             : (Progression::PickupRadius(player->Combat().level)
+	                                + context.game->Mods().pickupBonus);
 	const float distance = Distance(WorldX(), WorldY(), player->WorldX(), player->WorldY());
 
 	// 가까우면 저절로 끌려온다. 자석이 켜져 있으면 멀리 있는 것까지 전부.
@@ -572,6 +652,12 @@ void PickupActor::Collect(const ActorContext& context)
 		{
 			player->GainSouls(context, 5);
 		}
+		break;
+
+	case PickupKind::Gold:
+		player->AddGold(m_Data.value);
+		context.game->SpawnFloatingText(player->WorldX() + 14.0f, headY + 6.0f, std::string(),
+		                                m_Data.value, kColorGold, 12.0f);
 		break;
 
 	case PickupKind::Magnet:

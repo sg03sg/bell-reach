@@ -28,6 +28,19 @@ public:
 	// 화톳불을 내려놓는다.
 	bool PlaceFire() const;
 
+	// 누르고 있는 동안만 상태 창이 열린다
+	bool HoldingStatus() const { return m_Ascii['\t']; }
+
+	// 상인에게 산 것
+	bool PlaceTorch() const { return m_Ascii['r']; }     // 횃불을 그 자리에 세운다
+	bool UseHealPack() const { return m_Ascii['q']; }    // 회복약을 마신다
+
+	// 거래 창에서 고르는 숫자(1~4)
+	bool Choice(int number) const
+	{
+		return number >= 1 && number <= 9 && m_Ascii['0' + number];
+	}
+
 	bool IsPressed(unsigned char key) const;
 
 private:

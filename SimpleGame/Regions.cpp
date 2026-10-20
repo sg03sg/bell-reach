@@ -99,6 +99,7 @@ Regions::Region Regions::At(int regionX, int regionY) const
 	region.rung   = state != NULL && (state->flags & kFlagRung) != 0;
 	region.woken  = state != NULL && (state->flags & kFlagWoken) != 0;
 	region.wardenDefeated = state != NULL && (state->flags & kFlagWardenDefeated) != 0;
+	region.heard  = state != NULL && (state->flags & kFlagHeard) != 0;
 	region.warmth = state != NULL ? state->warmth : 0.0f;
 	region.personSeed = hash >> 8;   // 굳은 사람 자리를 고른 하위 비트와 겹치지 않게
 
@@ -266,6 +267,11 @@ void Regions::MarkRung(int regionX, int regionY)
 void Regions::MarkWardenDefeated(int regionX, int regionY)
 {
 	m_States[PackKey(regionX, regionY)].flags |= kFlagWardenDefeated;
+}
+
+void Regions::MarkHeard(int regionX, int regionY)
+{
+	m_States[PackKey(regionX, regionY)].flags |= kFlagHeard;
 }
 
 void Regions::CollectRung(std::vector<Region>& out) const

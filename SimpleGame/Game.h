@@ -10,6 +10,8 @@
 #include "Combat.h"
 #include "ExploredMap.h"
 #include "LightGrid.h"
+#include "Perks.h"
+#include "Professions.h"
 #include "Regions.h"
 #include "SceneGraph.h"
 #include "World.h"
@@ -19,6 +21,7 @@ class Input;
 class PlayerActor;
 class CompanionActor;
 class EnemyActor;
+class VillagerActor;
 struct Color;
 
 //
@@ -60,6 +63,11 @@ public:
 	float Oil() const;
 	int RungRegions() const { return m_Regions.RungRegionCount(); }
 	bool HasCompanion() const { return m_Companion != NULL; }
+
+	// ── 되찾은 사람들이 주는 것 ──
+	// 액터들이 능력치를 셀 때 이 값을 얹는다.
+	const Perks::Modifiers& Mods() const { return m_Perks.Mods(); }
+	const Perks::Set& GetPerks() const { return m_Perks; }
 	float CompanionDarkness() const;
 	bool IsTalking() const { return m_Dialogue.active; }
 	float RingProgress() const { return m_RingProgress; }
@@ -106,6 +114,30 @@ public:
 	EnemyActor* FindEnemy(int id) const;
 	int NextEnemyId() { return m_NextEnemyId++; }
 
+	// 마을 사람도 과녁이 된다. 적과 목록을 나눠 두는 것은,
+	// 자동 조준이 적을 먼저 보고 사람은 적이 없을 때만 보게 하기 위해서다.
+	void RegisterVillager(VillagerActor* villager);
+	void UnregisterVillager(VillagerActor* villager);
+	const std::vector<VillagerActor*>& Villagers() const { return m_Villagers; }
+
+	// 이 둘레의 마을 사람들이 함께 원한을 품는다. 누가 한 사람을 때리면 부른다.
+	void RallyVillagers(float worldX, float worldY, float radius, float seconds);
+
+	// ── 마을의 살림(Trade.cpp) ──
+	// 마을 사람은 번호로 서로를 부른다. 포인터를 들고 있으면 상대가 사라졌을 때 위험하다.
+	int NextVillagerId() { return m_NextVillagerId++; }
+	VillagerActor* FindVillager(int id) const;
+	VillagerActor* FindProfession(Profession profession) const;
+	VillagerActor* RichestVillagerNear(float worldX, float worldY, float radius, int excludeId) const;
+	bool GuardNear(float worldX, float worldY, float radius) const;
+	void RallyGuards(float worldX, float worldY, float radius, int thiefId, float seconds);
+	void EndQuarrelsAbout(int villagerId);
+
+	// owner의 집 둘레에 index번째 장식을 놓는다
+	void PlaceDecoration(VillagerActor* owner, int index);
+
+	bool IsTrading() const { return m_Trade.active; }
+
 	float RandomRange(float low, float high);
 	bool Roll(int percent);
 
@@ -141,6 +173,27 @@ private:
 		float y;
 	};
 
+	// ── 첫 마을 ──
+	// 처음부터 밝고 적이 오지 않는 곳. 되찾아 온 사람들이 여기 자리를 잡는다.
+	static const int kHomeRegionX = 0;
+	static const int kHomeRegionY = 0;
+	void SettleHomeVillage();
+	VillagerActor* SpawnVillager(float worldX, float worldY, unsigned int look,
+	                             Profession profession, int perkIndex);
+
+	// ── 거래(Trade.cpp) ──
+	VillagerActor* FindTalkableVillager() const;
+	bool TryStartTrade();
+	void UpdateTrade(const Input& input);
+	void Buy(VillagerActor* seller, int option);
+	void TellNextVillage(VillagerActor* informant);
+	void DrawTrade(Renderer* renderer);
+	std::string Greeting(const VillagerActor* villager) const;
+	bool IsHomeRegion(int regionX, int regionY) const
+	{
+		return regionX == kHomeRegionX && regionY == kHomeRegionY;
+	}
+
 	// ── 액터 놓고 치우기 ──
 	void StreamActors();
 	void LoadChunk(int chunkX, int chunkY);
@@ -158,6 +211,7 @@ private:
 	void UpdateSpawning(float deltaSeconds);
 	void SpawnWardens();
 	void SpawnEnemies(float deltaSeconds);
+	void SpawnOutskirts(float deltaSeconds);
 	void RespawnPlayer();
 
 	// ── 대화 ──
@@ -206,6 +260,7 @@ private:
 	PlayerActor* m_Player = NULL;
 	CompanionActor* m_Companion = NULL;
 	std::vector<EnemyActor*> m_Enemies;
+	std::vector<VillagerActor*> m_Villagers;
 	int m_NextEnemyId = 1;
 
 	// 놓여 있는 청크와 구역. 키가 곧 액터의 StreamKey다.
@@ -229,9 +284,27 @@ private:
 	float m_RingTowerX = 0.0f;
 	float m_RingTowerY = 0.0f;
 	DialogueState m_Dialogue;
+
+	// 마을 사람과의 거래. 열려 있는 동안 세계가 멈춘다(대화처럼).
+	struct TradeState
+	{
+		bool active = false;
+		int villagerId = -1;
+		std::string reply;        // 산 뒤나 못 샀을 때 그 사람이 하는 말
+		float replyTime = 0.0f;
+	};
+	TradeState m_Trade;
+	bool m_PrevChoice[5] = { false, false, false, false, false };
+	bool m_PrevTorch = false;
+	bool m_PrevHealPack = false;
+	int m_NextVillagerId = 1;
+	Perks::Set m_Perks;
+	float m_PerkNotice = 0.0f;      // 방금 합류한 사람을 화면에 알리는 시간
+	int m_PerkNoticeIndex = -1;
 	bool m_PrevInteract = false;
 	bool m_PrevPlaceFire = false;
 	float m_SpawnTimer = 4.0f;
+	float m_OutskirtTimer = 3.0f;    // 첫 마을 외곽에 어둠이 몰려오기까지
 	bool m_PendingRespawn = false;
 	float m_RespawnTimer = 0.0f;
 

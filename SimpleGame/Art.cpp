@@ -1200,6 +1200,16 @@ namespace Art
 			r->DrawRoundRect(x + 4.0f, cy + 5.2f, 3.6f, 2.4f, 0.6f, tip);
 			break;
 		}
+
+		case PickupKind::Gold:
+		{
+			// 금화 — 납작하게 기울어 반짝인다. 많을수록 조금 크다
+			const float size = 4.6f + std::min(2.5f, pickup.value * 0.4f);
+			const float spin = 0.55f + 0.45f * std::fabs(std::sin(time * 2.6f + seed * 0.1f));
+			r->DrawEllipse(x, cy, size * spin, size, Tint(kGold, 1.0f, blink), 0.0f, 0.9f * blink);
+			r->DrawEllipse(x, cy, size * spin * 0.55f, size * 0.55f, Tint(kGold, 0.7f, blink));
+			break;
+		}
 		}
 	}
 

@@ -18,6 +18,7 @@ const char* DrawTagName(DrawTag tag)
 	case DrawTag::Tower:       return "종탑";
 	case DrawTag::Sleeper:     return "굳은사람";
 	case DrawTag::Fire:        return "불";
+	case DrawTag::Villager:    return "마을사람";
 	case DrawTag::Player:      return "플레이어";
 	case DrawTag::Companion:   return "동행자";
 	case DrawTag::Enemy:       return "적";
@@ -25,6 +26,7 @@ const char* DrawTagName(DrawTag tag)
 	case DrawTag::Orb:         return "구슬";
 	case DrawTag::Pickup:      return "보급품";
 	case DrawTag::FloatText:   return "뜬글자";
+	case DrawTag::Skill:       return "스킬";
 	case DrawTag::Hud:         return "HUD";
 	case DrawTag::Minimap:     return "미니맵";
 	case DrawTag::Dialogue:    return "대화";
@@ -49,6 +51,7 @@ const char* DrawTagKey(DrawTag tag)
 	case DrawTag::Tower:       return "tower";
 	case DrawTag::Sleeper:     return "sleeper";
 	case DrawTag::Fire:        return "fire";
+	case DrawTag::Villager:    return "villager";
 	case DrawTag::Player:      return "player";
 	case DrawTag::Companion:   return "companion";
 	case DrawTag::Enemy:       return "enemy";
@@ -56,6 +59,7 @@ const char* DrawTagKey(DrawTag tag)
 	case DrawTag::Orb:         return "orb";
 	case DrawTag::Pickup:      return "pickup";
 	case DrawTag::FloatText:   return "floattext";
+	case DrawTag::Skill:       return "skill";
 	case DrawTag::Hud:         return "hud";
 	case DrawTag::Minimap:     return "minimap";
 	case DrawTag::Dialogue:    return "dialogue";
@@ -85,10 +89,18 @@ DrawTag DrawTagFromActorName(const char* name)
 		{ "Tower",      DrawTag::Tower },
 		{ "Sleeper",    DrawTag::Sleeper },
 		{ "Bonfire",    DrawTag::Fire },
+		{ "Torch",      DrawTag::Fire },
+		{ "Decor",      DrawTag::Prop },
+		{ "Villager",   DrawTag::Villager },
 		{ "Player",     DrawTag::Player },
 		{ "Companion",  DrawTag::Companion },
 		{ "Enemy",      DrawTag::Enemy },
 		{ "Ember",      DrawTag::Projectile },
+		{ "Stone",      DrawTag::Projectile },
+		{ "Arrow",      DrawTag::Projectile },
+		{ "Bomb",       DrawTag::Projectile },
+		{ "Effect",     DrawTag::Skill },
+		{ "Zone",       DrawTag::Skill },
 		{ "Orb",        DrawTag::Orb },
 		{ "Pickup",     DrawTag::Pickup },
 		{ "FloatingText", DrawTag::FloatText },
