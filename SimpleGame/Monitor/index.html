@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>종소리가 닿는 곳까지 — 모니터</title>
+<style>
+  :root {
+    --bg: #0e1014;
+    --panel: #171a21;
+    --line: #262b36;
+    --text: #d6d9e0;
+    --dim: #7b8494;
+    --flame: #e8a955;
+    --soul: #8fb8f0;
+    --bad: #e05a4e;
+    --good: #67c08a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px;
+    background: var(--bg); color: var(--text);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  h1 { font-size: 15px; margin: 0 0 4px; font-weight: 600; letter-spacing: .02em; }
+  .sub { color: var(--dim); font-size: 11px; margin-bottom: 16px; }
+  .sub b { color: var(--flame); font-weight: 600; }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .card h2 {
+    font-size: 11px; color: var(--dim); margin: 0 0 10px;
+    text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+  }
+  .wide { grid-column: 1 / -1; }
+
+  /* 수치 묶음 */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 10px; }
+  .stat .k { color: var(--dim); font-size: 10px; }
+  .stat .v { font-size: 17px; font-weight: 600; }
+
+  /* 막대 */
+  .bar { height: 5px; background: #0a0c10; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .bar > i { display: block; height: 100%; background: var(--bad); }
+  .bar.soul > i { background: var(--soul); }
+  .bar.oil  > i { background: var(--flame); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; }
+  .on   { background: rgba(232,169,85,.16); color: var(--flame); }
+  .off  { background: rgba(123,132,148,.14); color: var(--dim); }
+  .home { background: rgba(103,192,138,.16); color: var(--good); }
+  .warn { background: rgba(224,90,78,.16); color: var(--bad); }
+
+  .empty { color: var(--dim); padding: 6px 0; }
+  #offline {
+    display: none; background: rgba(224,90,78,.12); border: 1px solid var(--bad);
+    color: var(--bad); padding: 8px 12px; border-radius: 6px; margin-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+
+<h1>종소리가 닿는 곳까지</h1>
+<div class="sub">갱신 <b id="tick">—</b> · 경과 <span id="elapsed">—</span>초 · <span id="fps">—</span> fps</div>
+
+<div id="offline">게임과 연결이 끊어졌습니다. 게임이 켜져 있는지 확인하세요.</div>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>플레이어</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">레벨</div><div class="v" id="level">—</div></div>
+      <div class="stat"><div class="k">무기</div><div class="v" id="tier">—</div></div>
+      <div class="stat"><div class="k">골드</div><div class="v" id="gold" style="color:var(--flame)">—</div></div>
+      <div class="stat"><div class="k">위치</div><div class="v" id="pos" style="font-size:12px">—</div></div>
+      <div class="stat"><div class="k">구역</div><div class="v" id="region" style="font-size:12px">—</div></div>
+    </div>
+    <div style="margin-top:10px">
+      <div class="k" style="color:var(--dim);font-size:10px">체력 <span id="hpText"></span></div>
+      <div class="bar"><i id="hp"></i></div>
+      <div class="k" style="color:var(--dim);font-size:10px;margin-top:6px">영혼 <span id="soulText"></span></div>
+      <div class="bar soul"><i id="soul"></i></div>
+      <div class="k" style="color:var(--dim);font-size:10px;margin-top:6px">기름 <span id="oilText"></span></div>
+      <div class="bar oil"><i id="oil"></i></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>개수</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">몹</div><div class="v" id="cEnemies">—</div></div>
+      <div class="stat"><div class="k">종탑지기</div><div class="v" id="cWardens">—</div></div>
+      <div class="stat"><div class="k">마을 사람</div><div class="v" id="cVillagers">—</div></div>
+      <div class="stat"><div class="k">외곽 몹</div><div class="v" id="cOutskirt">—</div></div>
+      <div class="stat"><div class="k">화난 주민</div><div class="v" id="cAngry">—</div></div>
+      <div class="stat"><div class="k">울린 종</div><div class="v" id="cRung">—</div></div>
+      <div class="stat"><div class="k">액터</div><div class="v" id="cActors">—</div></div>
+      <div class="stat"><div class="k">맵 청크</div><div class="v" id="cChunks">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>얻은 특성</h2>
+    <div id="perks"></div>
+  </div>
+
+  <div class="card wide">
+    <h2>마을별 상태</h2>
+    <table>
+      <thead><tr>
+        <th>마을</th><th>종</th><th>사람</th><th>종탑지기</th>
+        <th>생기</th><th class="num">몹</th><th class="num">난이도</th>
+      </tr></thead>
+      <tbody id="villages"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>NPC</h2>
+    <table>
+      <thead><tr><th>누구</th><th>하는 일</th><th class="num">체력</th><th class="num">골드</th><th class="num">장식</th></tr></thead>
+      <tbody id="npcs"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>몹</h2>
+    <table>
+      <thead><tr><th>종류</th><th class="num">체력</th><th class="num">위치</th></tr></thead>
+      <tbody id="enemies"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const pct = (a, b) => b > 0 ? Math.max(0, Math.min(100, a / b * 100)) : 0;
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function rows(tbody, list, make) {
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">없음</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(make).join('');
+}
+
+function draw(d) {
+  // 게임이 막 켜졌을 때는 아직 올려둔 상태가 없다. 다음 주기를 기다린다.
+  if (!d || !d.player) return;
+
+  $('tick').textContent = new Date().toLocaleTimeString('ko-KR');
+  $('elapsed').textContent = Math.round(d.time);
+  $('fps').textContent = d.fps.toFixed(1);
+
+  const p = d.player;
+  $('level').textContent = p.level;
+  $('tier').textContent = '+' + p.weaponTier;
+  $('gold').textContent = p.gold;
+  $('pos').textContent = Math.round(p.x) + ', ' + Math.round(p.y);
+  $('region').textContent = p.region[0] + ', ' + p.region[1];
+
+  $('hp').style.width = pct(p.health, p.maxHealth) + '%';
+  $('hpText').textContent = Math.round(p.health) + ' / ' + Math.round(p.maxHealth);
+  $('soul').style.width = pct(p.souls, p.soulsNeeded) + '%';
+  $('soulText').textContent = p.souls + ' / ' + p.soulsNeeded;
+  $('oil').style.width = (p.oil * 100) + '%';
+  $('oilText').textContent = Math.round(p.oil * 100) + '%';
+
+  const c = d.counts;
+  $('cEnemies').textContent = c.enemies;
+  $('cWardens').textContent = c.wardens;
+  $('cVillagers').textContent = c.villagers;
+  $('cRung').textContent = c.rungRegions;
+  $('cOutskirt').textContent = c.outskirt;
+  $('cAngry').textContent = c.angryVillagers;
+  $('cAngry').style.color = c.angryVillagers > 0 ? 'var(--bad)' : '';
+  $('cActors').textContent = c.actors;
+  $('cChunks').textContent = c.mapChunks;
+
+  $('perks').innerHTML = d.perks.length
+    ? d.perks.map(k =>
+        `<div style="margin-bottom:6px">
+           <span class="tag on">${esc(k.who)}</span>
+           <b>${esc(k.title)}</b>
+           <div style="color:var(--dim);font-size:11px">${esc(k.effect)}</div>
+         </div>`).join('')
+    : '<div class="empty">아직 아무도 구하지 못했습니다</div>';
+
+  rows($('villages'), d.villages, v => `
+    <tr>
+      <td>${v.home ? '<span class="tag home">첫 마을</span>' : `<b>${v.order + 1}번째</b>`} <span style="color:var(--dim)">(${v.region[0]}, ${v.region[1]})</span></td>
+      <td><span class="tag ${v.rung ? 'on' : 'off'}">${v.rung ? '울림' : '침묵'}</span></td>
+      <td><span class="tag ${v.woken ? 'on' : 'off'}">${v.home ? '—' : esc(v.person)}</span></td>
+      <td><span class="tag ${v.wardenDefeated ? 'off' : 'warn'}">${v.wardenDefeated ? '처치' : '생존'}</span></td>
+      <td>${Math.round(v.warmth * 100)}%</td>
+      <td class="num">${v.enemies}</td>
+      <td class="num">${v.power.toFixed(2)}</td>
+    </tr>`);
+
+  rows($('npcs'), d.npcs, n => {
+    const tags = [];
+    if (n.rescued) tags.push('<span class="tag on">합류</span>');
+    if (n.grudge > 0) tags.push(`<span class="tag warn">복수 ${Math.ceil(n.grudge)}초</span>`);
+    if (n.patrolling) tags.push('<span class="tag off">순찰</span>');
+    if (n.quarrel) tags.push('<span class="tag warn">다툼</span>');
+    if (n.stolen > 0) tags.push(`<span class="tag warn">훔침 ${n.stolen}</span>`);
+    if (n.thief) tags.push('<span class="tag off">좀도둑</span>');
+    let doing = esc(n.activity);
+    if (n.type === 'companion') {
+      const ready = n.cooldown <= 0.01;
+      doing += ` · ${esc(n.skill)} <span class="tag ${ready ? 'on' : 'off'}">${ready ? '준비' : n.cooldown.toFixed(1) + '초'}</span>`;
+    }
+    return `
+    <tr>
+      <td>${esc(n.name)} ${tags.join(' ')}</td>
+      <td style="color:var(--dim)">${doing}</td>
+      <td class="num">${n.health !== undefined ? Math.round(n.health) : '—'}</td>
+      <td class="num" style="color:var(--flame)">${n.gold !== undefined ? n.gold : '—'}</td>
+      <td class="num">${n.decorations !== undefined ? n.decorations : '—'}</td>
+    </tr>`;
+  });
+
+  rows($('enemies'), d.enemies, e => `
+    <tr>
+      <td>${esc(e.kind)} ${e.warden ? '<span class="tag warn">보스</span>' : ''}${e.outskirt ? ' <span class="tag off">외곽</span>' : ''}${e.slowed ? ' <span class="tag on">둔화</span>' : ''}</td>
+      <td class="num">${Math.round(e.health)} / ${Math.round(e.maxHealth)}</td>
+      <td class="num" style="color:var(--dim)">${Math.round(e.x)}, ${Math.round(e.y)}</td>
+    </tr>`);
+}
+
+async function poll() {
+  try {
+    const response = await fetch('/status.json', { cache: 'no-store' });
+    draw(await response.json());
+    $('offline').style.display = 'none';
+  } catch (error) {
+    $('offline').style.display = 'block';
+  }
+}
+
+poll();
+setInterval(poll, 1000);
+</script>
+
+</body>
+</html>

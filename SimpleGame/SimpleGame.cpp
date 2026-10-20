@@ -23,6 +23,7 @@ but WITHOUT ANY WARRANTY.
 #include "Game.h"
 #include "Input.h"
 #include "PostProcess.h"
+#include "Monitor.h"
 #include "Profiler.h"
 
 // 맵이 30 x 20 타일, 타일 한 칸이 32픽셀이므로 창 크기가 결정된다.
@@ -103,6 +104,11 @@ Profiler g_Profiler;
 // 나중에 "그때 왜 느렸지"를 돌아보려면 평소에 쌓여 있어야 하기 때문이다.
 std::string g_PerfLogPath = "perf";
 bool g_StartBatching = true;
+
+// 모니터링 — 브라우저로 들여다보는 창. --port 0 이면 띄우지 않는다.
+Monitor g_Monitor;
+int g_MonitorPort = 8787;
+float g_MonitorTimer = 0.0f;
 Profiler::Frame g_FrameStats;
 
 void RenderScene(void)
@@ -147,6 +153,14 @@ void RenderScene(void)
 		state.playerX = g_Game.PlayerX();
 		state.playerY = g_Game.PlayerY();
 		state.batching = g_Renderer->IsBatching();
+
+		// 모니터가 보고 있으면 이 순간의 상태를 놓아 둔다.
+		// 요약을 내는 박자에 얹어 두면 따로 재지 않아도 된다.
+		if (g_Monitor.IsRunning())
+		{
+			g_Monitor.Publish(g_Game.BuildStatusJson(
+				static_cast<float>(g_FrameStats.seconds > 0.0001f ? 1.0f / g_FrameStats.seconds : 0.0f)));
+		}
 
 		std::cout << g_Profiler.Report(state) << "\n"
 		          << "[상태] Lv " << g_Game.Level()
@@ -298,6 +312,10 @@ int main(int argc, char **argv)
 		{
 			g_PerfLogPath = argv[i + 1];
 		}
+		else if (std::strcmp(argv[i], "--port") == 0)
+		{
+			g_MonitorPort = static_cast<int>(std::strtol(argv[i + 1], NULL, 10));
+		}
 	}
 
 	for (int i = 1; i < argc; ++i)
@@ -337,6 +355,16 @@ int main(int argc, char **argv)
 	std::cout << "성능 기록: " << g_PerfLogPath
 	          << "   (B = 모아 그리기 켜고 끄기, P = 후처리, M = 미니맵)\n";
 	std::atexit(PrintSessionSummary);
+
+	if (g_MonitorPort > 0 && g_Monitor.Start(g_MonitorPort, "./Monitor"))
+	{
+		std::cout << "모니터: http://localhost:" << g_MonitorPort << "\n";
+	}
+	else if (g_MonitorPort > 0)
+	{
+		std::cout << "모니터를 띄우지 못했습니다(포트 " << g_MonitorPort
+		          << "가 이미 쓰이는 중일 수 있습니다). 게임은 그대로 돌아갑니다.\n";
+	}
 	if (!g_Renderer->IsInitialized())
 	{
 		std::cout << "Renderer could not be initialized.. \n";

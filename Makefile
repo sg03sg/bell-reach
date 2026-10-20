@@ -31,7 +31,7 @@ endif
 
 .PHONY: all run release shot clean
 
-all: $(TARGET) $(BUILD)/Shaders
+all: $(TARGET) $(BUILD)/Shaders $(BUILD)/Monitor
 
 $(TARGET): $(OBJECTS)
 	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
@@ -45,6 +45,13 @@ $(BUILD)/Shaders: $(wildcard $(SRC_DIR)/Shaders/*)
 	@rm -rf $(BUILD)/Shaders
 	@cp -R $(SRC_DIR)/Shaders $(BUILD)/Shaders
 	@touch $(BUILD)/Shaders
+
+# 모니터 대시보드도 같은 자리에서 읽는다.
+$(BUILD)/Monitor: $(wildcard $(SRC_DIR)/Monitor/*)
+	@mkdir -p $(BUILD)
+	@rm -rf $(BUILD)/Monitor
+	@cp -R $(SRC_DIR)/Monitor $(BUILD)/Monitor
+	@touch $(BUILD)/Monitor
 
 $(BUILD):
 	@mkdir -p $(BUILD)

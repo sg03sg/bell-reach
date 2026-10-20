@@ -46,6 +46,10 @@ public:
 	// 후처리가 끝난 화면 위에 그린다. 비네트에 가려지거나 번지지 않게.
 	void RenderHud(Renderer* renderer);
 
+	// ── 모니터링 ──
+	// 지금 이 순간의 상태를 JSON 한 덩어리로 만든다. 브라우저가 받아 간다.
+	std::string BuildStatusJson(float fps) const;
+
 	// ── 진단 ──
 	size_t LitChunks() const { return m_Light.LiveChunks(); }
 	size_t MapChunks() const { return m_World.CachedChunks(); }
