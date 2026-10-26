@@ -4,6 +4,8 @@
 #include "Regions.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <vector>
 
 namespace
@@ -151,9 +153,12 @@ void World::Generate(Chunk& chunk, int chunkX, int chunkY) const
 	// 마을 안에서 이 청크가 맡은 자리
 	const int roleX = PositiveMod(chunkX, kVillageChunks);
 	const int roleY = PositiveMod(chunkY, kVillageChunks);
+	// 광장에서 몇 청크 떨어졌는가. 0은 광장, 1~2는 집이 늘어선 성읍,
+	// 3은 울타리에 걸친 가장자리(뒤뜰과 텃밭, 빈집), 그 밖은 울타리 밖 숲이다.
 	const int centerRole = kVillageChunks / 2;
-	const bool isPlaza = (roleX == centerRole && roleY == centerRole);
-	const bool isWoods = (roleX != centerRole && roleY != centerRole);   // 큰길에서 먼 뒤뜰
+	const int ring = std::max(std::abs(roleX - centerRole), std::abs(roleY - centerRole));
+	const bool isPlaza = (ring == 0);
+	const bool isWoods = (ring >= 3);
 
 	// ── 1. 십자 흙길 ───────────────────────────────────────────
 	// 네 변 정중앙에서 이웃 청크의 길과 만난다. 무한 맵에서 길이 끊기지 않는다.
@@ -202,8 +207,34 @@ void World::Generate(Chunk& chunk, int chunkX, int chunkY) const
 	}
 
 	// 앞 마을과 다음 마을 쪽으로만 문을 내고, 문에서 구역 끝까지 숲길을 튼다.
-	// 길은 큰길과 같은 두 줄이고, 양옆 한 줄씩은 풀밭 길섶이다.
-	// 문은 길섶까지 네 칸이 열린다.
+	// 문은 길섶까지 네 칸이 열리고, 문을 나서면 숲길이 점점 넓어져 열두 칸(384px,
+	// 화면 높이의 절반 남짓)의 숲속 빈터가 된다. 가운데 네 줄이 흙길, 나머지는
+	// 풀밭이고 드문드문 나무가 선다 — 길을 따라가되 어디로 비켜설지는 고를 수 있다.
+	// 이웃 구역과 맞닿는 끝에서는 양쪽 모두 가장 넓으므로 폭이 어긋나지 않는다.
+	//
+	// 숲길은 사인 곡선 한 굽이만큼 좌우로 휜다. 문 앞(t=0)과 구역 경계(t=1)에서는
+	// 휘지 않으므로 이웃 구역의 길과 늘 같은 줄에서 만난다. 한 칸 갈 때 한 칸보다
+	// 덜 휘어서 길이 끊기지 않는다. 휘는 쪽은 구역과 방향마다 다르다.
+	const int bendAmount = kRoadBend;
+	auto bend = [&](int along, int length, int side)
+	{
+		if (length <= 0)
+		{
+			return 0;
+		}
+		const float t = static_cast<float>(along) / static_cast<float>(length);
+		const float sign = ((HashCoords(regionX * 4 + side, regionY, m_Seed) >> 7) & 1u) ? 1.0f : -1.0f;
+		return static_cast<int>(std::lround(sign * bendAmount * std::sin(6.2831853f * t)));
+	};
+
+	// 문에서 몇 칸 나왔는가로 숲길의 반폭을 정한다. 문 앞 세 칸은 문 폭 그대로,
+	// 그다음 두 칸마다 한 칸씩 넓어져 kRoadSpread에서 멈춘다.
+	const int spread = kRoadSpread;
+	auto widen = [&](int along)
+	{
+		return std::min(spread, 1 + std::max(0, along - 2) / 2);
+	};
+
 	for (int y = 0; y < n; ++y)
 	{
 		for (int x = 0; x < n; ++x)
@@ -211,22 +242,90 @@ void World::Generate(Chunk& chunk, int chunkX, int chunkY) const
 			const int lx = localX(x);
 			const int ly = localY(y);
 
-			// 동서로 난 길은 roadLow-1 ~ roadHigh+1 줄을, 남북으로 난 길은 같은 칸 폭을 쓴다
-			const bool acrossX = (ly >= roadLow - 1 && ly <= roadHigh + 1);
-			const bool acrossY = (lx >= roadLow - 1 && lx <= roadHigh + 1);
-			const bool shoulderX = (ly == roadLow - 1 || ly == roadHigh + 1);
-			const bool shoulderY = (lx == roadLow - 1 || lx == roadHigh + 1);
-
 			bool road = false;
-			bool shoulder = false;
-			if ((gates & Regions::kGateEast) && acrossX && lx >= wallHigh)  { road = true; shoulder = shoulderX && lx > wallHigh; }
-			if ((gates & Regions::kGateWest) && acrossX && lx <= wallLow)   { road = true; shoulder = shoulderX && lx < wallLow; }
-			if ((gates & Regions::kGateSouth) && acrossY && ly >= wallHigh) { road = true; shoulder = shoulderY && ly > wallHigh; }
-			if ((gates & Regions::kGateNorth) && acrossY && ly <= wallLow)  { road = true; shoulder = shoulderY && ly < wallLow; }
+			bool outside = false;   // 울타리 줄이 아니라 그 바깥 숲길인가
+			int across = 0;         // 가운데 두 줄에서 몇 칸 떨어졌나
+			int wide = 1;           // 이 자리의 반폭
 
-			if (road)
+			// 동서로 난 길: 휜 만큼 줄을 옮기고, 가운데 두 줄(roadLow · roadHigh)에서 wide칸씩 넓힌다
+			auto eastWest = [&](int offset, int width, bool beyond)
 			{
-				tile(x, y) = shoulder ? kGrass : kPath;
+				const int center0 = roadLow + offset;
+				const int center1 = roadHigh + offset;
+				if (ly >= center0 - width && ly <= center1 + width)
+				{
+					road = true;
+					outside = beyond;
+					wide = width;
+					across = std::max(0, std::max(center0 - ly, ly - center1));
+				}
+			};
+			auto northSouth = [&](int offset, int width, bool beyond)
+			{
+				const int center0 = roadLow + offset;
+				const int center1 = roadHigh + offset;
+				if (lx >= center0 - width && lx <= center1 + width)
+				{
+					road = true;
+					outside = beyond;
+					wide = width;
+					across = std::max(0, std::max(center0 - lx, lx - center1));
+				}
+			};
+
+			if ((gates & Regions::kGateEast) && lx >= wallHigh)
+			{
+				const int along = lx - wallHigh;
+				eastWest(bend(along, span - 1 - wallHigh, 0), widen(along), lx > wallHigh);
+			}
+			if ((gates & Regions::kGateWest) && lx <= wallLow)
+			{
+				const int along = wallLow - lx;
+				eastWest(bend(along, wallLow, 1), widen(along), lx < wallLow);
+			}
+			if ((gates & Regions::kGateSouth) && ly >= wallHigh)
+			{
+				const int along = ly - wallHigh;
+				northSouth(bend(along, span - 1 - wallHigh, 2), widen(along), ly > wallHigh);
+			}
+			if ((gates & Regions::kGateNorth) && ly <= wallLow)
+			{
+				const int along = wallLow - ly;
+				northSouth(bend(along, wallLow, 3), widen(along), ly < wallLow);
+			}
+
+			if (!road)
+			{
+				continue;
+			}
+
+			if (!outside)
+			{
+				tile(x, y) = kPath;                 // 울타리에 난 문
+			}
+			else if (across >= wide)
+			{
+				tile(x, y) = kGrass;                // 숲과 맞닿는 길섶
+			}
+			else if (across <= 1)
+			{
+				tile(x, y) = kPath;                 // 가운데 흙길
+			}
+			else if (across >= 3 && random.Chance(4))
+			{
+				// 빈터에 드문드문 선 나무. 흙길에서 두 칸은 떨어져 있어 길을 막지 않는다.
+				tile(x, y) = kTree;
+				Tree tree;
+				tree.tileX = chunkX * n + x;
+				tree.tileY = chunkY * n + y;
+				const int roll = random.Range(0, 99);
+				tree.kind = static_cast<unsigned char>(roll < 35 ? 0 : (roll < 90 ? 1 : 2));
+				chunk.trees.push_back(tree);
+			}
+			else
+			{
+				// 풀밭. 오래 밟힌 자리는 흙이 드러났다
+				tile(x, y) = random.Chance(12) ? kPath : kGrass;
 			}
 		}
 	}
@@ -245,6 +344,10 @@ void World::Generate(Chunk& chunk, int chunkX, int chunkY) const
 					return false;
 				}
 				const bool footprint = (x >= x0 && x < x0 + width && y >= y0 && y < y0 + depth);
+				if (footprint && outsideWall(localX(x), localY(y)))
+				{
+					return false;   // 숲길 빈터에는 집을 짓지 않는다
+				}
 				const unsigned char t = tile(x, y);
 				if (footprint ? (t != kGrass) : (t == kHouse || t == kTree || t == kWall || t == kWoods))
 				{
@@ -386,7 +489,8 @@ void World::Generate(Chunk& chunk, int chunkX, int chunkY) const
 	{
 		for (int x = 0; x < n; ++x)
 		{
-			if (tile(x, y) != kGrass || nearRoad(x, y) || nearHouse(x, y))
+			// 울타리 밖 숲길의 나무는 길을 낼 때 이미 심었다(2.5)
+			if (tile(x, y) != kGrass || nearRoad(x, y) || nearHouse(x, y) || outsideWall(localX(x), localY(y)))
 			{
 				continue;
 			}

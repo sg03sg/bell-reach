@@ -27,6 +27,8 @@ using namespace Art;
 // 플레이어는 Space로 말을 걸어 거래 창을 연다. 열려 있는 동안 세계는 멈추고,
 // 숫자 키로 사고, Space로 닫는다. 플레이어가 낸 돈은 파는 사람의 지갑으로
 // 가고, 그 사람은 그 돈으로 제 집 둘레를 꾸민다 — 돈을 쓴 만큼 마을이 살아난다.
+// 산 물건은 가방(I)에 들고, 단축칸에 걸어 두고 쓴다. 모험가는 물건 대신
+// 제 칼(활 · 지팡이 · 방패)을 판다 — 다음 마을까지 함께 가 준다.
 //
 namespace
 {
@@ -77,10 +79,14 @@ namespace
 	{
 		switch (seller->GetProfession())
 		{
+		case Profession::Courier:
+			out[0] = { "편지 배달", "이웃 마을 사람에게 전하면 15골드", 0 };
+			return 1;
+
 		case Profession::Merchant:
-			out[0] = { "횃불",   "세워 두면 꺼지지 않는 불. R로 세운다", Prices::kTorch };
-			out[1] = { "회복약", "체력 35%. Q로 마신다",                  Prices::kHealPack };
-			out[2] = { "기름",   "등불 기름을 절반 채운다",               Prices::kOil };
+			out[0] = { "횃불",   "세워 두면 꺼지지 않는 불. 가방에 든다(R로 바로 세우기)", Prices::kTorch };
+			out[1] = { "회복약", "체력 35%. 가방에 든다(Q로 바로 마시기)",               Prices::kHealPack };
+			out[2] = { "기름병", "등불 기름 절반. 가방에 든다",                          Prices::kOil };
 			return 3;
 
 		case Profession::Doctor:
@@ -93,7 +99,12 @@ namespace
 			return 1;
 
 		case Profession::Hunter:
-			out[0] = { "강화석", "무기 강화 +1단계", Prices::kWeaponStone };
+			out[0] = { "강화석", "무기 강화 +1단계. 가방에 든다", Prices::kWeaponStone };
+			return 1;
+
+		case Profession::Adventurer:
+			out[0] = { "고용 · 다음 마을까지", CallingOf(seller->GetCalling()).note,
+			           Prices::HireFee(seller->GetCalling(), seller->Village()) };
 			return 1;
 
 		default:
@@ -120,12 +131,13 @@ VillagerActor* Game::FindVillager(int id) const
 	return NULL;
 }
 
-VillagerActor* Game::FindProfession(Profession profession) const
+VillagerActor* Game::FindProfession(Profession profession, int village) const
 {
 	for (size_t i = 0; i < m_Villagers.size(); ++i)
 	{
 		VillagerActor* villager = m_Villagers[i];
-		if (villager->GetProfession() == profession && !villager->IsRescued() && !villager->IsDead())
+		if (villager->GetProfession() == profession && villager->Village() == village
+		    && !villager->IsRescued() && !villager->IsDead() && villager->Trip() < 0)
 		{
 			return villager;
 		}
@@ -133,7 +145,7 @@ VillagerActor* Game::FindProfession(Profession profession) const
 	return NULL;
 }
 
-VillagerActor* Game::RichestVillagerNear(float worldX, float worldY, float radius, int excludeId) const
+VillagerActor* Game::RichestVillagerNear(float worldX, float worldY, float radius, int excludeId, int village) const
 {
 	// 털 만한 사람. 15골드는 있어야 위험을 무릅쓸 만하다.
 	VillagerActor* best = NULL;
@@ -141,7 +153,8 @@ VillagerActor* Game::RichestVillagerNear(float worldX, float worldY, float radiu
 	for (size_t i = 0; i < m_Villagers.size(); ++i)
 	{
 		VillagerActor* villager = m_Villagers[i];
-		if (villager->Id() == excludeId || villager->IsDead() || villager->Gold() <= bestGold)
+		if (villager->Id() == excludeId || villager->IsDead() || villager->Gold() <= bestGold
+		    || villager->Village() != village || villager->Trip() >= 0 || villager->IsHired())
 		{
 			continue;
 		}
@@ -243,7 +256,9 @@ VillagerActor* Game::FindTalkableVillager() const
 	for (size_t i = 0; i < m_Villagers.size(); ++i)
 	{
 		VillagerActor* villager = m_Villagers[i];
-		if (villager->IsDead())
+		// 함께 다니는 모험가는 늘 곁에 있어서, 말을 걸 수 있게 두면 종을 당기려던
+		// Space가 거래 창을 연다. 돌려보내는 것은 가방(I)의 파티 칸에서 한다.
+		if (villager->IsDead() || villager->IsHired())
 		{
 			continue;
 		}
@@ -268,9 +283,11 @@ bool Game::TryStartTrade()
 	m_Trade = TradeState();
 	m_Trade.active = true;
 	m_Trade.villagerId = villager->Id();
-	for (int i = 0; i < 5; ++i)
+
+	// 맡아 온 편지가 이 마을로 가는 것이면 말을 거는 것으로 전해진다
+	if (m_Letter.carrying && villager->Village() == m_Letter.to)
 	{
-		m_PrevChoice[i] = true;   // 열리는 순간 눌려 있던 숫자로 사지 않게
+		DeliverPlayerLetter(villager);
 	}
 	return true;
 }
@@ -294,14 +311,13 @@ void Game::UpdateTrade(const Input& input)
 		return;
 	}
 
+	// 새로 누른 숫자만 산다. 열리는 순간 눌려 있던 숫자는 새로 누른 것이 아니다.
 	for (int number = 1; number <= 4; ++number)
 	{
-		const bool down = input.Choice(number);
-		if (down && !m_PrevChoice[number])
+		if (KeyPressed(static_cast<unsigned char>('0' + number)))
 		{
 			Buy(seller, number);
 		}
-		m_PrevChoice[number] = down;
 	}
 }
 
@@ -327,26 +343,73 @@ void Game::Buy(VillagerActor* seller, int option)
 	}
 	const Offer& offer = offers[option - 1];
 
+	// 모험가는 물건이 아니라 함께 갈 길을 판다
+	if (seller->GetProfession() == Profession::Adventurer)
+	{
+		reply(HireAdventurer(seller));
+		return;
+	}
+
 	// 살 까닭이 없는 경우는 돈을 받지 않는다
 	if (seller->GetProfession() == Profession::Doctor && offer.price <= 0)
 	{
 		reply("멀쩡하구먼. 다치면 오게.");
 		return;
 	}
-	if (seller->GetProfession() == Profession::Merchant && option == 3 && m_Player->Oil() >= 0.99f)
+	if (seller->GetProfession() == Profession::Hunter
+	    && Stats().weaponTier + m_Inventory.Count(ItemKind::WeaponStone) >= Progression::kMaxWeaponTier)
 	{
-		reply("기름은 넉넉하구먼.");
+		reply("더 벼릴 데가 없네. 가방에 든 것만으로도 충분해.");
 		return;
 	}
-	if (seller->GetProfession() == Profession::Hunter
-	    && Stats().weaponTier >= Progression::kMaxWeaponTier)
+
+	// 가방에 들어갈 물건이면 자리가 있는지 먼저 본다
+	ItemKind bought = ItemKind::None;
+	if (seller->GetProfession() == Profession::Merchant)
 	{
-		reply("더 벼릴 데가 없네. 훌륭한 불씨야.");
+		bought = (option == 1) ? ItemKind::Torch : (option == 2) ? ItemKind::HealPack : ItemKind::Oil;
+	}
+	else if (seller->GetProfession() == Profession::Hunter)
+	{
+		bought = ItemKind::WeaponStone;
+	}
+	if (bought != ItemKind::None && !m_Inventory.CanAdd(bought))
+	{
+		reply("가방이 가득 찼구먼. 좀 비우고 오게.");
 		return;
 	}
 	if (seller->GetProfession() == Profession::Informant)
 	{
 		TellNextVillage(seller);
+		return;
+	}
+	if (seller->GetProfession() == Profession::Courier)
+	{
+		// 이웃 마을 중 사람이 사는 곳으로 가는 편지를 맡긴다
+		if (m_Letter.carrying)
+		{
+			reply("이미 편지를 들고 있구먼. 그것부터 전해 주게.");
+			return;
+		}
+		const int here = seller->Village();
+		int target = -1;
+		if (IsPopulated(here + 1))
+		{
+			target = here + 1;
+		}
+		else if (here > 0 && IsPopulated(here - 1))
+		{
+			target = here - 1;
+		}
+		if (target < 0)
+		{
+			reply("편지 보낼 곳이 아직 없네. 이웃 마을 종이 울려야 길이 열리지.");
+			return;
+		}
+		m_Letter.carrying = true;
+		m_Letter.from = here;
+		m_Letter.to = target;
+		reply(std::to_string(target + 1) + "번째 마을 사람 아무에게나 전해 주게. 품삯은 거기서 받게.");
 		return;
 	}
 
@@ -357,23 +420,25 @@ void Game::Buy(VillagerActor* seller, int option)
 	}
 	seller->AddGold(offer.price);
 
+	if (bought != ItemKind::None)
+	{
+		m_Inventory.Add(bought);
+	}
+
 	switch (seller->GetProfession())
 	{
 	case Profession::Merchant:
 		if (option == 1)
 		{
-			m_Player->AddTorch();
 			reply("꺼지지 않는 불이야. 숲길에 하나씩 세워 두게.");
 		}
 		else if (option == 2)
 		{
-			m_Player->AddHealPack();
 			reply("쓴 맛이 나도 참고 마시게.");
 		}
 		else
 		{
-			m_Player->Refuel(0.5f);
-			reply("등불이 다시 환하구먼.");
+			reply("등불이 꺼져 가거든 부어 넣게.");
 		}
 		break;
 
@@ -383,8 +448,7 @@ void Game::Buy(VillagerActor* seller, int option)
 		break;
 
 	case Profession::Hunter:
-		m_Player->AddWeaponTier();
-		reply("문 밖 놈들 뼈로 벼린 거야. 잘 들 걸세.");
+		reply("문 밖 놈들 뼈로 벼린 거야. 가방에 넣어 두었다가 쓰게.");
 		break;
 
 	default:
@@ -471,7 +535,53 @@ std::string Game::Greeting(const VillagerActor* villager) const
 		return (gold >= 30) ? "오늘 현상금이 쏠쏠했어." : "문 밖 놈들 뼈로 쓸 만한 걸 벼려 두었지.";
 	case Profession::Guard:
 		return "울타리 밖은 우리가 지킨다. 요즘은 안에 도둑이 더 골치지만.";
+	case Profession::Knight:
+		return (villager->Trip() >= 0) ? "길 위에서는 내 뒤에 붙어 있게."
+		                               : "숲길을 건너려거든 나를 부르게. 이사 가는 사람들을 지키는 게 내 일이지.";
+	case Profession::Adventurer:
+		if (villager->Trip() >= 0)
+		{
+			return "지금은 다른 일행을 호위하는 중이네.";
+		}
+		switch (villager->GetCalling())
+		{
+		case Calling::Warrior:  return "앞에서 베는 건 내게 맡기게. 품삯만 주면 다음 마을까지 가지.";
+		case Calling::Archer:   return "멀리 있는 놈부터 떨어뜨려 주지. 다음 마을까지라면.";
+		case Calling::Healer:   return "다치면 내가 고쳐 주지. 혼자 숲길은 무리야.";
+		case Calling::Mage:     return "무리 지어 오는 놈들은 한 번에 태워 주지.";
+		case Calling::Guardian: return "놈들은 내가 붙잡아 두겠네. 그사이에 쏘게.";
+		default:
+			return (gold >= 30) ? "요즘 호위 일이 쏠쏠해." : "품삯만 맞으면 어느 마을이든 데려다 주지.";
+		}
+	case Profession::Courier:
+		return "이웃 마을에 소식을 전하는 게 내 일이네. 자네가 대신 들고 가 주겠나?";
 	default:
+		if (villager->WantsToMove() >= 0)
+		{
+			return std::to_string(villager->WantsToMove() + 1)
+			     + "번째 마을로 가려고 짐을 싸는 중이야. 호위만 구하면 떠날 거야.";
+		}
+		// 이웃 마을에서 온 소식을 전한다
+		{
+			auto life = m_Lives.find(villager->Village());
+			if (life != m_Lives.end() && !life->second.rumors.empty())
+			{
+				const Rumor& rumor = life->second.rumors[static_cast<size_t>(villager->Id()) % life->second.rumors.size()];
+				const std::string where = std::to_string(rumor.about + 1) + "번째 마을은 ";
+				if (rumor.thefts >= 2)
+				{
+					return where + "도둑이 들끓는다더군.";
+				}
+				if (rumor.prosperity > life->second.prosperity + 10.0f)
+				{
+					return where + "요즘 살림이 넉넉하다더군. 편지에 그렇게 쓰여 있었어.";
+				}
+				if (rumor.danger > life->second.danger + 0.5f)
+				{
+					return where + "어둠이 짙어 무섭다더군.";
+				}
+			}
+		}
 		if (gold >= 40)
 		{
 			return "집 앞에 화분을 하나 더 들일까 해.";
@@ -553,7 +663,9 @@ void Game::DrawTrade(Renderer* renderer)
 		renderer->DrawLabel("파는 것은 없다", 13.0f, left + 6.0f, rowY, noteColor);
 	}
 
-	const std::string hint = (count > 0) ? "숫자로 사기   Space 닫기" : "Space 닫기";
+	const std::string hint = (seller->GetProfession() == Profession::Adventurer)
+		? ("1 고용   Space 닫기   파티 " + std::to_string(m_Party.size()) + "/" + std::to_string(kMaxParty))
+		: ((count > 0) ? "숫자로 사기   Space 닫기" : "Space 닫기");
 	const float hintWidth = renderer->MeasureLabel(hint, 13.0f);
 	renderer->DrawLabel(hint, 13.0f, right - hintWidth, centerY - panelHeight * 0.5f + 26.0f,
 	                    Tint(kStone, 1.6f));

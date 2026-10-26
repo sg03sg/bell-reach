@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <deque>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "Actor.h"
@@ -179,10 +180,6 @@ public:
 	// ── 마을에서 쓰는 것 ──
 	void AddGold(int amount) { m_Combat.gold += amount; }
 	bool SpendGold(int amount);          // 모자라면 쓰지 않고 false
-	void AddTorch() { ++m_Combat.torches; }
-	bool UseTorch();
-	void AddHealPack() { ++m_Combat.healPacks; }
-	bool UseHealPack();
 	void Refuel(float amount) { m_Oil = std::min(1.0f, m_Oil + amount); }
 	void AddWeaponTier();
 	void StartMagnet(float seconds);
@@ -287,13 +284,63 @@ public:
 
 	// look은 겉모습을 정하는 값이고, perkIndex가 0 이상이면
 	// 되찾아 와서 여기 자리 잡은 사람이다(그 직업 차림으로 서 있는다).
+	// calling은 모험가의 갈래. 모험가인데 None이면 look으로 정한다.
 	VillagerActor(float worldX, float worldY, unsigned int look, Profession profession,
-	              int perkIndex = -1);
+	              int perkIndex = -1, Calling calling = Calling::None);
 	~VillagerActor() override;
 
 	// 스폰한 뒤에 불러 준다. 번호를 받고 과녁 목록에 들어간다.
-	// villageX/Y는 마을 한가운데(종탑). 순찰과 싸움이 여기서 너무 멀어지지 않는다.
-	void AttachToGame(Game* game, float villageX, float villageY);
+	// village는 몇 번째 마을 사람인가, villageX/Y는 그 마을 한가운데(종탑).
+	// 순찰과 싸움이 여기서 너무 멀어지지 않는다.
+	void AttachToGame(Game* game, int village, float villageX, float villageY);
+
+	// ── 어느 마을, 어느 집 ──
+	int Village() const { return m_Village; }
+	long long HouseKey() const { return m_HouseKey; }
+	void SetHouse(long long key) { m_HouseKey = key; }
+	// 다른 마을로 이사했다. 새 마을, 새 집 문 앞이 이제 집이다.
+	void Relocate(int village, float villageX, float villageY, float homeX, float homeY, long long houseKey);
+
+	// ── 성향(0~1) — 소식을 들었을 때 이사를 결심하는 데 쓴다 ──
+	float Greed() const { return m_Greed; }            // 돈 되는 곳으로
+	float Timidity() const { return m_Timidity; }      // 위험한 곳에서 멀리
+	float Wanderlust() const { return m_Wanderlust; }  // 그냥 떠나고 싶은 마음
+
+	// ── 이사 ──
+	int WantsToMove() const { return m_WantsMove; }    // 가고 싶은 마을. -1이면 없다
+	void SetWantsMove(int village, float seconds) { m_WantsMove = village; m_WantTimer = seconds; }
+	void ClearWantsMove() { m_WantsMove = -1; m_WantTimer = 0.0f; }
+
+	// ── 여정(Game이 일행을 꾸려 길을 정해 준다) ──
+	int Trip() const { return m_Trip; }
+	bool IsEscort() const { return m_Escort; }
+	void JoinTrip(int tripId, bool escort) { m_Trip = tripId; m_Escort = escort; m_Board.hasTarget = false; m_Board.timer = 0.0f; }
+	void LeaveTrip() { m_Trip = -1; m_Escort = false; }
+	void SetPath(const std::vector<std::pair<float, float> >& path);
+	void ClearPath() { m_Path.clear(); m_PathIndex = 0; }
+	bool HasPath() const { return m_PathIndex < m_Path.size(); }
+	bool PathDone() const { return m_PathIndex >= m_Path.size(); }
+	size_t PathIndex() const { return m_PathIndex; }
+	void SetPathLimit(size_t limit) { m_PathLimit = limit; }   // 일행이 흩어지지 않게 여기까지만
+	bool Waypoint(float& x, float& y) const;
+	void AdvanceWaypoint() { if (m_PathIndex < m_Path.size()) { ++m_PathIndex; } }
+	int EscortStrength() const { return ProfessionOf(m_Profession).escort; }
+	int EscortFee() const { return ProfessionOf(m_Profession).escortFee; }
+
+	// 다른 일에 매여 있는가(원한 · 다툼 · 도둑질 · 여정 · 고용)
+	bool IsBusy() const { return HasGrudge() || InQuarrel() || IsFleeing() || m_Trip >= 0 || HasPath() || m_Hired; }
+
+	// ── 플레이어에게 고용되어 함께 다니기(모험가) ──
+	// 다음 마을(until)까지 플레이어를 따라다니며 제 갈래대로 싸운다.
+	// 계약이 끝나는 것은 Game이 정한다(Party.cpp).
+	Calling GetCalling() const { return m_Calling; }
+	bool IsHired() const { return m_Hired; }
+	int HiredUntil() const { return m_HireUntil; }
+	void Hire(int untilVillage, int slot);
+	void Dismiss();
+	void SetPartySlot(int slot) { m_PartySlot = slot; }
+	void ServeParty(const ActorContext& context);   // 행동 트리의 고용 가지가 부른다
+	void Heal(float amount) { m_Health = std::min(m_MaxHealth, m_Health + amount); }
 
 	void OnUpdate(const ActorContext& context) override;
 	void OnDraw(const DrawContext& context) const override;
@@ -334,9 +381,13 @@ public:
 	// 플레이어의 불씨는 사람을 죽일 수 있다. 마을 사람끼리 던진 돌은 아프기만 하다.
 	void TakeDamage(const ActorContext& context, float amount);
 	void TakeHitFrom(const ActorContext& context, float amount, int attackerId);
+	// 어둠에게 물렸다. 마을 사람끼리의 다툼과 달리 죽을 수 있다.
+	void TakeMonsterHit(const ActorContext& context, float amount);
+	// 화면 밖 숲길에서 일행이 습격당했다. 글자를 띄울 일 없이 몸만 상한다.
+	void Wound(float amount);
 	bool IsDead() const { return m_Health <= 0.0f; }
 	float Health() const { return m_Health; }
-	float MaxHealth() const { return 60.0f; }
+	float MaxHealth() const { return m_MaxHealth; }
 	void HealFully() { m_Health = MaxHealth(); }
 
 	float Radius() const { return 11.0f; }
@@ -360,14 +411,35 @@ private:
 	void FollowErrandTarget(const ActorContext& context);   // 움직이는 상대를 따라 목적지를 고친다
 	void TrySteal(const ActorContext& context);
 
+	// 파티로 다닐 때 한 걸음. 벽에 막히면 미끄러지고, 아주 끼면 그냥 지나간다
+	// (플레이어를 놓치는 것보다 낫다).
+	void PartyStep(const ActorContext& context, float targetX, float targetY, float speed);
+	void FollowPlayer(const ActorContext& context);
+
 	BT::NodePtr m_Tree;
 	BT::Blackboard m_Board;
 
 	Game* m_Game = NULL;
 	int m_Id = -1;
 	float m_Health = 60.0f;
+	float m_MaxHealth = 60.0f;
+
+	int m_Village = 0;
+	long long m_HouseKey = -1;
+	float m_Greed = 0.5f;
+	float m_Timidity = 0.5f;
+	float m_Wanderlust = 0.5f;
+	int m_WantsMove = -1;
+	float m_WantTimer = 0.0f;
+
+	int m_Trip = -1;
+	bool m_Escort = false;
+	std::vector<std::pair<float, float> > m_Path;
+	size_t m_PathIndex = 0;
+	size_t m_PathLimit = static_cast<size_t>(-1);
 
 	Profession m_Profession;
+	Calling m_Calling = Calling::None;
 	bool m_Thief = false;
 	int m_Gold = 0;
 	int m_Decorations = 0;
@@ -383,6 +455,14 @@ private:
 	float m_Facing = 1.0f;
 	bool m_Walking = false;
 	float m_Bob = 0.0f;       // 걸을 때 위아래로 흔들리는 위상
+
+	// 고용
+	bool m_Hired = false;
+	int m_HireUntil = -1;     // 이 마을에 닿으면 계약이 끝난다
+	int m_PartySlot = 0;      // 줄 서는 차례. 뒤일수록 멀찍이 따라온다
+	float m_SkillTimer = 0.0f;   // 힐러의 치유 · 방패병의 도발
+	float m_CastGlow = 0.0f;     // 막 무언가를 했을 때 발밑이 빛난다
+	float m_FacingHold = 0.0f;   // 싸운 쪽을 보고 있을 남은 시간
 };
 
 //
@@ -395,11 +475,12 @@ private:
 class ThrownActor : public Actor
 {
 public:
-	enum class Kind { Stone, Arrow, Bomb };
+	// Light는 힐러의 빛 조각(화살처럼 곧게), Fireball은 마법사의 불덩이(폭약처럼 터진다)
+	enum class Kind { Stone, Arrow, Bomb, Light, Fireball };
 	enum class Team { HitsEnemies, HitsPlayer, HitsVillager };
 
 	// 과녁 자리를 향해 날아간다. 돌과 화살은 지나쳐도 사거리까지 계속 가고,
-	// 폭약은 과녁 자리에 떨어져 터진다.
+	// 폭약과 불덩이는 과녁 자리에 떨어져 터진다.
 	ThrownActor(Kind kind, Team team, float worldX, float worldY,
 	            float targetX, float targetY, float speed, float damage, float range);
 
@@ -522,6 +603,9 @@ public:
 	// 일러 두지 않고 맞으면 플레이어(또는 동행자)가 때린 것으로 친다.
 	void MarkHitBy(int villagerId) { m_PendingHitBy = villagerId; }
 
+	// 방패병이 도발했다. 그동안은 그 사람만 노린다(빛 안에 있어도).
+	void Taunt(int villagerId, float seconds) { m_TauntBy = villagerId; m_TauntTimer = seconds; }
+
 	// 첫 마을 외곽을 두드리는 무리로 만든다
 	void MakeOutskirt() { m_Data.outskirt = true; }
 	bool IsOutskirt() const { return m_Data.outskirt; }
@@ -537,6 +621,8 @@ private:
 	Game* m_Game = NULL;
 	int m_PendingHitBy = -1;
 	float m_Facing = 1.0f;
+	int m_TauntBy = -1;
+	float m_TauntTimer = 0.0f;
 };
 
 // 등불에서 날아간 불씨

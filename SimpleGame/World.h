@@ -14,25 +14,25 @@
 //
 // ── 마을과 숲 ──
 //
-// 청크 5x5(80칸)가 구역 하나다. 구역은 둘 중 하나다.
+// 청크 17x17(272칸)이 구역 하나다. 구역은 둘 중 하나다.
 //
 //   마을 — Regions가 정한 길(첫 마을 → 둘째 마을 → …) 위의 구역
 //   숲   — 그 밖의 모든 구역. 들어갈 수 없는 깊은 숲이다
 //
 // 마을은 울타리로 둘러싸인다. 첫 마을은 돌 성벽, 나머지는 나무 울타리다.
 //
-//      0      14                              66     79   (구역 안의 칸)
-//      ┌──────┬───────────────────────────────┬──────┐
-//      │  숲  │          울타리(벽)            │  숲  │
-//      │      │ ┌─────────── 안길 ──────────┐ │      │
-//      │      │ │  골목      골목      골목  │ │      │
-//      │ 길 ══╪═╡ ════════ 광장 · 종탑 ═════ ╞═╪══ 길 │  ← 39·40줄의 큰길
-//      │      │ │                            │ │      │
-//      │      │ └────────────────────────────┘ │      │
-//      └──────┴───────────────────────────────┴──────┘
+//      0          84                    188         271   (구역 안의 칸)
+//      ┌──────────┬──────────────────────┬──────────┐
+//      │   숲     │     울타리 안 103칸   │    숲    │
+//      │          │  골목이 16칸마다     │          │
+//      │ 길 ~~~~~~╪═══ 광장 · 종탑 ══════╪~~~~~~ 길 │  ← 135·136줄의 큰길
+//      │ (굽은 숲길)│  가로세로로 엮인 성읍 │(굽은 숲길)│
+//      └──────────┴──────────────────────┴──────────┘
 //
-// 울타리 안은 51칸이다. 청크마다 놓인 십자길이 울타리 안에서 골목 세 줄씩
-// 가로세로로 엮여 작은 성읍이 된다. 바깥쪽 한 청크 폭은 숲이다.
+// 문에서 구역 끝까지 숲길이 84칸쯤이라, 이웃 마을 문까지는 약 167칸(5,300px)이다.
+// 1레벨 걸음(190px/s)으로 30초 남짓. 숲길은 kRoadBend칸 폭으로 굽는다 —
+// 문 앞과 구역 경계에서는 곧게 이어져서 이웃 구역의 길과 늘 맞닿는다.
+// 숲길은 문을 나서면 열두 칸(화면 높이의 절반 남짓)으로 넓어진다(kRoadSpread).
 //
 // 문은 길이 이어진 쪽에만 난다 — 앞 마을과 다음 마을 쪽. 그래서 길은
 // 갈래가 없다. 첫 마을에서 나가면 둘째 마을에 닿고, 거기서 셋째로 간다.
@@ -57,20 +57,29 @@ public:
 	static const int kTilePixels = 32;
 
 	// 마을 한 곳의 청크 수(한 변). Regions::kRegionChunks와 같아야 한다(Regions.cpp에서 검사).
-	// 홀수여야 한가운데 청크에 광장과 종탑이 선다.
-	static const int kVillageChunks = 5;
+	// 홀수여야 한가운데 청크에 광장과 종탑이 선다. 대부분은 울타리 밖 숲이다 —
+	// 마을과 마을 사이를 1레벨 걸음으로 30초쯤 걸어야 닿게 하려는 것이다.
+	static const int kVillageChunks = 17;
 
 	// ── 마을 안의 자리(구역 안 칸 좌표, 0~47) ──
-	static const int kVillageSpan = kVillageChunks * kChunkTiles;                         // 80
-	static const int kVillageCenter = (kVillageChunks / 2) * kChunkTiles + kChunkTiles / 2; // 40. 종탑이 서는 칸
-	static const int kWallLow = kVillageCenter - 26;   // 14. 울타리가 서는 줄
-	static const int kWallHigh = kVillageCenter + 26;  // 66
+	static const int kVillageSpan = kVillageChunks * kChunkTiles;                         // 272
+	static const int kVillageCenter = (kVillageChunks / 2) * kChunkTiles + kChunkTiles / 2; // 136. 종탑이 서는 칸
+	static const int kVillageHalf = 52;                         // 종탑에서 울타리까지(칸)
+	static const int kWallLow = kVillageCenter - kVillageHalf;  // 84. 울타리가 서는 줄
+	static const int kWallHigh = kVillageCenter + kVillageHalf; // 188. 울타리 안은 103칸
 	static const int kLaneLow = kWallLow + 1;    // 울타리 안쪽을 도는 안길
 	static const int kLaneHigh = kWallHigh - 1;
 	static const int kRoadLow = kVillageCenter - 1;   // 마을을 가로지르는 큰길(두 칸)
 	static const int kRoadHigh = kVillageCenter;
-	static const int kStreetLow = kVillageCenter - kChunkTiles;        // 24. 큰길 양옆의 골목
-	static const int kStreetHigh = kVillageCenter + kChunkTiles - 1;   // 55
+	static const int kStreetLow = kVillageCenter - 2 * kChunkTiles;       // 104. 큰길에서 두 블록 떨어진 골목
+	static const int kStreetHigh = kVillageCenter + 2 * kChunkTiles - 1;  // 167
+
+	// 문 밖 숲길이 좌우로 굽는 폭(칸). 곧은 길 30초는 지루하다
+	static const int kRoadBend = 5;
+
+	// 숲길의 반폭(칸). 가운데 두 줄에서 양쪽으로 이만큼 — 모두 2 + 2 x 5 = 12칸(384px)이다.
+	// 문 앞에서는 문 폭(네 칸)으로 시작해 점점 넓어진다.
+	static const int kRoadSpread = 5;
 
 	// ── 타일 ──
 	static const unsigned char kGrass = 0;   // 풀밭

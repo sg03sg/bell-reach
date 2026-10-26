@@ -8,6 +8,9 @@ namespace
 	KeyHandler g_Up = nullptr;
 	id g_Monitor = nil;   // 붙들고 있어야 모니터가 살아 있다
 
+	ScrollHandler g_Scroll = nullptr;
+	id g_ScrollMonitor = nil;
+
 	//
 	// macOS 가상 키 코드 → 영문 소문자.
 	// 이 값들은 키보드 위의 자리를 가리키며 입력 소스와 상관없다
@@ -45,10 +48,18 @@ namespace
 		case 0x06: return 'z';
 		case 0x31: return ' ';
 		case 0x30: return '\t';   // Tab — 누르고 있는 동안 상태 창
-		case 0x12: return '1';     // 숫자 — 거래 창에서 고른다
+		case 0x12: return '1';     // 숫자 — 거래 창에서 고르고, 평소에는 단축칸을 쓴다
 		case 0x13: return '2';
 		case 0x14: return '3';
 		case 0x15: return '4';
+		case 0x17: return '5';
+		case 0x16: return '6';
+		case 0x1A: return '7';
+		case 0x1C: return '8';
+		case 0x19: return '9';
+		case 0x1D: return '0';
+		case 0x18: return '=';     // 큰 지도 확대
+		case 0x1B: return '-';     // 큰 지도 축소
 		case 0x35: return 27;    // ESC
 		default:   return 0;     // 방향키 같은 나머지는 GLUT가 그대로 맡는다
 		}
@@ -98,4 +109,32 @@ bool InstallPhysicalKeyboard(KeyHandler down, KeyHandler up)
 	}];
 
 	return g_Monitor != nil;
+}
+
+bool InstallScrollWheel(ScrollHandler handler)
+{
+	if (g_ScrollMonitor != nil)
+	{
+		return true;
+	}
+
+	g_Scroll = handler;
+	g_ScrollMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel
+	                                                        handler:^NSEvent* (NSEvent* event)
+	{
+		if (g_Scroll != nullptr)
+		{
+			// 트랙패드는 픽셀 단위로 잘게, 마우스 휠은 한 칸씩 온다. 휠 한 칸을 1로 맞춘다.
+			const float amount = event.hasPreciseScrollingDeltas
+				? static_cast<float>(event.scrollingDeltaY) / 12.0f
+				: static_cast<float>(event.scrollingDeltaY);
+			if (amount != 0.0f)
+			{
+				g_Scroll(amount);
+			}
+		}
+		return event;
+	}];
+
+	return g_ScrollMonitor != nil;
 }

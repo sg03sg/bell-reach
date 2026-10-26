@@ -31,9 +31,9 @@
 class Regions
 {
 public:
-	// 구역 한 변의 청크 수. 5청크 = 80타일 = 2560픽셀.
-	// 울타리 안 마을만 해도 화면(960)의 거의 두 배라 걸어 다니며 둘러봐야 한다.
-	static const int kRegionChunks = 5;
+	// 구역 한 변의 청크 수. 17청크 = 272타일 = 8,704픽셀.
+	// 울타리 안 마을이 103칸(3,300px), 나머지는 마을과 마을 사이의 숲이다.
+	static const int kRegionChunks = 17;
 
 	// 문이 난 쪽. 앞 마을과 다음 마을로 이어지는 쪽에만 난다.
 	static const unsigned char kGateNorth = 1;

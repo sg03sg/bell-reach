@@ -25,3 +25,10 @@ typedef void (*KeyHandler)(unsigned char key, int x, int y);
 
 // 창을 만든 뒤에 한 번 부른다. 성공하면 true.
 bool InstallPhysicalKeyboard(KeyHandler down, KeyHandler up);
+
+//
+// 마우스 휠. macOS의 GLUT는 휠을 알려 주지 않으므로 같은 방법(로컬 모니터)으로 받는다.
+// 위로 굴리면 +. 휠 한 칸이 1쯤이고, 트랙패드는 잘게 나뉘어 온다.
+//
+typedef void (*ScrollHandler)(float amount);
+bool InstallScrollWheel(ScrollHandler handler);

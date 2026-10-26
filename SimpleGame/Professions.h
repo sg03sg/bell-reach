@@ -20,6 +20,9 @@ enum class Profession
 	Doctor,      // 의사 — 다친 사람을 고친다
 	Informant,   // 정보상 — 다음 마을 소식을 판다
 	Guard,       // 경비 — 울타리 안쪽을 돌고 도둑을 잡는다
+	Knight,      // 기사 — 이사 가는 사람과 편지를 지키며 숲길을 건넌다. 가장 든든하다
+	Adventurer,  // 모험가 — 품삯을 받고 길을 함께 간다
+	Courier,     // 전령 — 이웃 마을로 편지를 나른다
 	Count
 };
 
@@ -42,9 +45,56 @@ struct ProfessionInfo
 	int startGold;
 	bool shop;               // 플레이어와 거래하는가
 	Decor decor[6];          // 꾸미는 순서
+
+	float maxHealth;         // 몸의 단단함
+	float stoneDamage;       // 어둠에게 던지는 돌(기사는 칼로 친다고 치자)
+	int escort;              // 숲길을 지키는 힘. 0이면 호위를 맡지 않는다
+	int escortFee;           // 호위 한 번에 받는 돈
 };
 
 const ProfessionInfo& ProfessionOf(Profession profession);
+
+//
+// 모험가의 갈래.
+//
+// 모험가는 품삯을 받고 이사 가는 사람을 지켜 주기도 하지만, 플레이어도
+// 돈을 주고 고용할 수 있다. 고용한 모험가는 다음 마을까지 함께 가며 제
+// 갈래대로 싸운다(VillagerActor::ServeParty). 파티는 다섯 명까지다.
+//
+//   전사     붙어서 벤다. 칼끝 둘레의 적도 함께 맞는다
+//   궁수     멀찍이 서서 쏜다. 적이 붙으면 물러나 거리를 벌린다
+//   힐러     다친 사람(플레이어 · 파티)을 고친다. 한가하면 빛 조각을 던진다
+//   마법사   무리 한가운데 불덩이를 떨군다. 느리지만 넓다
+//   방패병   둘레의 적을 제게로 끈다. 맞아도 덜 아프다
+//
+enum class Calling : unsigned char
+{
+	None,
+	Warrior,
+	Archer,
+	Healer,
+	Mage,
+	Guardian,
+	Count
+};
+
+struct CallingInfo
+{
+	const char* name;      // 화면에 나오는 이름
+	const char* role;      // 근접 · 원거리 · 회복 …
+	const char* note;      // 고용 창의 한 줄
+	float tint[3];         // 옷과 효과의 빛깔
+	float maxHealth;
+	float damage;          // 한 번에. 플레이어 레벨에 따라 커진다
+	float reach;           // 이 안의 적을 친다(px)
+	float every;           // 다시 치기까지(초)
+	float toughness;       // 받는 피해 배율. 작을수록 단단하다
+	int fee;               // 첫 마을에서의 품삯. 뒤쪽 마을일수록 비싸다
+};
+
+const CallingInfo& CallingOf(Calling calling);
+
+const int kMaxParty = 5;   // 한 번에 데리고 다닐 수 있는 모험가
 
 //
 // 물가. 밸런스를 만질 때 이 한 곳만 보면 된다.
@@ -65,6 +115,17 @@ namespace Prices
 
 	// 쓰러뜨린 적 하나에 마을 사람이 받는 현상금
 	int Bounty(bool hunter, bool warden);
+
+	const int kLetterReward = 15; // 플레이어가 편지를 이웃 마을에 전해 주면
+
+	// 모험가를 다음 마을까지 고용하는 값. 뒤쪽 마을의 모험가일수록 숲길이 험해 비싸다.
+	int HireFee(Calling calling, int village);
 }
 
+// 이웃 마을로 건너려면 일행에 이만큼의 호위 힘이 있어야 한다.
+// 뒤쪽 마을로 갈수록 숲길의 어둠이 짙으므로 더 든든해야 떠난다.
+int RequiredEscort(int fromVillage, int toVillage);
+
 const int kMaxDecorations = 6;
+const int kVillagersPerVillage = 20;   // 사람이 사는 마을 하나의 주민 수
+const int kVillageCapacity = 26;       // 이사 와서 늘 수 있는 데까지

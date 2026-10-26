@@ -198,7 +198,7 @@ void PlayerActor::Fire(const ActorContext& context)
 		const std::vector<VillagerActor*>& villagers = context.game->Villagers();
 		for (size_t i = 0; i < villagers.size(); ++i)
 		{
-			if (villagers[i]->IsDead())
+			if (villagers[i]->IsDead() || villagers[i]->IsHired())   // 함께 다니는 사람은 겨누지 않는다
 			{
 				continue;
 			}
@@ -409,28 +409,6 @@ bool PlayerActor::SpendGold(int amount)
 	return true;
 }
 
-bool PlayerActor::UseTorch()
-{
-	if (m_Combat.torches <= 0)
-	{
-		return false;
-	}
-	--m_Combat.torches;
-	return true;
-}
-
-bool PlayerActor::UseHealPack()
-{
-	// 멀쩡할 때는 아깝게 마시지 않는다
-	if (m_Combat.healPacks <= 0 || m_Combat.health >= MaxHealth())
-	{
-		return false;
-	}
-	--m_Combat.healPacks;
-	Heal(MaxHealth() * 0.35f);
-	return true;
-}
-
 void PlayerActor::Shield(float seconds)
 {
 	m_Combat.invulnerable = std::max(m_Combat.invulnerable, seconds);
@@ -573,8 +551,7 @@ namespace
 	const float kArriveRange = 12.0f;      // 목적지에 이만큼 닿으면 도착으로 친다
 	const float kGrudgeSeconds = 14.0f;    // 원한이 식기까지
 	const float kRallyRange = 300.0f;      // 이 안의 사람들이 함께 원한을 품는다
-	const float kStoneDamage = 9.0f;       // 적에게 던지는 돌. 떠도는 그림자를 세 번에 쫓는다
-	const float kHunterStoneDamage = 14.0f;// 사냥꾼은 솜씨가 좋다
+	// 어둠에게 던지는 돌의 세기는 직업마다 다르다(Professions.cpp의 stoneDamage)
 	const float kStoneToPlayer = 4.0f;     // 원한을 품고 던지는 돌
 	const float kStoneToVillager = 3.0f;   // 마을 사람끼리 다툴 때 — 아프기만 하다
 	const float kStoneSpeed = 360.0f;
@@ -583,6 +560,43 @@ namespace
 	const float kGuardNotice = 260.0f;     // 경비가 이 안에 있으면 도둑질은 반드시 들킨다
 	const float kAngerRed[3] = { 0.92f, 0.20f, 0.15f };
 	const float kQuarrelOrange[3] = { 1.00f, 0.62f, 0.20f };
+
+	// ── 파티(고용한 모험가) ──
+	const float kPartyNotice = 420.0f;     // 이 안의 적을 알아본다
+	const float kPartyLeash = 460.0f;      // 플레이어에게서 이보다 먼 적은 쫓지 않는다
+	const float kPartyCatchUp = 720.0f;    // 이보다 떨어지면 플레이어의 발자취로 옮겨 붙는다
+	const float kPartyLag = 80.0f;         // 맨 앞 사람이 뒤처지는 거리. 동행자(46)보다 뒤에 선다
+	const float kPartySpacing = 30.0f;     // 줄 선 차례마다 이만큼 더 뒤에
+
+	// 둘레의 적을 한꺼번에 친다. 목록을 베껴 두고 도는 것은, 맞아 죽은 적이
+	// 전리품을 떨구며 장면에 무언가를 놓아도 순회가 흔들리지 않게 하려는 것이다.
+	int StrikeAround(const ActorContext& context, float x, float y, float radius, float damage, float push)
+	{
+		const std::vector<EnemyActor*> enemies = context.game->Enemies();
+		int hits = 0;
+		for (size_t i = 0; i < enemies.size(); ++i)
+		{
+			EnemyActor* enemy = enemies[i];
+			if (enemy->IsDying())
+			{
+				continue;
+			}
+			const float dx = enemy->WorldX() - x;
+			const float dy = enemy->BodyCenterY() - y;
+			const float distance = std::sqrt(dx * dx + dy * dy);
+			if (distance > radius + enemy->Radius())
+			{
+				continue;
+			}
+			enemy->TakeDamage(context, damage, x, y);
+			if (push > 0.0f && distance > 0.001f)
+			{
+				enemy->Push(dx / distance * push, dy / distance * push);
+			}
+			++hits;
+		}
+		return hits;
+	}
 
 	VillagerActor* Self(BT::Blackboard& board)
 	{
@@ -696,7 +710,13 @@ namespace
 	bool IsQuarreling(BT::Blackboard& board)     { return board.quarrel > 0.0f && board.quarry >= 0; }
 	bool IsRunningOff(BT::Blackboard& board)     { return board.fleeing; }
 	bool SeesEnemy(BT::Blackboard& board)        { return board.foe != NULL; }
+	bool IsTraveling(BT::Blackboard& board)
+	{
+		const VillagerActor* self = Self(board);
+		return self->Trip() >= 0 || self->HasPath();
+	}
 	bool PlayerIsNear(BT::Blackboard& board)     { return board.playerDistance < kNoticeRange; }
+	bool IsInParty(BT::Blackboard& board)        { return Self(board)->IsHired(); }
 	bool IsResting(BT::Blackboard& board)        { return board.timer > 0.0f; }
 	bool HasSomewhereToGo(BT::Blackboard& board) { return board.hasTarget; }
 
@@ -773,6 +793,64 @@ namespace
 		return BT::Status::Running;
 	}
 
+	//
+	// 길을 따라간다. 일행과 함께 이웃 마을로 가거나, 새 집 · 옛 집으로 걸어간다.
+	// 길은 Game이 정해 준다(타일 너비 우선 탐색이라 집과 숲에 걸리지 않는다).
+	//
+	// 호위는 어둠이 다가오면 그 자리에 서서 맞선다. 길을 벗어나 쫓지는 않는다 —
+	// 지켜야 할 사람이 뒤에 있다. 일행이 흩어지지 않게 Game이 정해 준 지점까지만
+	// 앞서 간다.
+	//
+	BT::Status TravelWithTrip(BT::Blackboard& board)
+	{
+		VillagerActor* self = Self(board);
+		board.hasTarget = false;
+		board.timer = 0.0f;
+		board.patrolling = false;
+
+		if (self->Trip() >= 0 && self->IsEscort() && board.foe != NULL && board.foeDistance <= board.attackRange)
+		{
+			board.activity = "호위하며 싸운다";
+			ThrowAt(board, board.foeX, board.foeY, ThrownActor::Team::HitsEnemies,
+			        ProfessionOf(self->GetProfession()).stoneDamage, -1);
+			return BT::Status::Running;
+		}
+
+		float x = 0.0f;
+		float y = 0.0f;
+		if (!self->Waypoint(x, y))
+		{
+			if (self->Trip() < 0)
+			{
+				self->ClearPath();   // 혼자 걷던 길이 끝났다
+				return BT::Status::Success;
+			}
+			board.activity = self->PathDone() ? "일행을 기다린다" : "뒤처진 일행을 기다린다";
+			return BT::Status::Running;
+		}
+
+		if (self->Trip() >= 0)
+		{
+			board.activity = self->IsEscort() ? "호위한다" : "길을 떠난다";
+		}
+		else
+		{
+			board.activity = "집으로 간다";
+		}
+
+		if (Distance(self->WorldX(), self->WorldY(), x, y) <= kArriveRange)
+		{
+			self->AdvanceWaypoint();
+			return BT::Status::Running;
+		}
+		if (!StepToward(board, x, y, 1.5f))
+		{
+			// 길 위인데도 막혔다면 몸이 모서리에 걸린 것이다. 다음 점으로 넘어가 본다.
+			self->AdvanceWaypoint();
+		}
+		return BT::Status::Running;
+	}
+
 	// 어둠이 보인다. 돌이 닿는 거리까지 다가가 던진다.
 	BT::Status DefendVillage(BT::Blackboard& board)
 	{
@@ -790,9 +868,17 @@ namespace
 		}
 		if (board.foeDistance <= board.attackRange)
 		{
-			const float damage = (self->GetProfession() == Profession::Hunter) ? kHunterStoneDamage : kStoneDamage;
-			ThrowAt(board, board.foeX, board.foeY, ThrownActor::Team::HitsEnemies, damage, -1);
+			ThrowAt(board, board.foeX, board.foeY, ThrownActor::Team::HitsEnemies,
+			        ProfessionOf(self->GetProfession()).stoneDamage, -1);
 		}
+		return BT::Status::Running;
+	}
+
+	// 고용되어 플레이어와 함께 다닌다. 무엇을 할지는 갈래가 정한다.
+	// 이름을 ServeParty로 하면 BuildTree(멤버 함수) 안에서 멤버 함수로 읽힌다.
+	BT::Status TravelWithPlayer(BT::Blackboard& board)
+	{
+		Self(board)->ServeParty(*board.context);
 		return BT::Status::Running;
 	}
 
@@ -888,7 +974,7 @@ namespace
 }
 
 VillagerActor::VillagerActor(float worldX, float worldY, unsigned int look, Profession profession,
-                             int perkIndex)
+                             int perkIndex, Calling calling)
 	: Actor("Villager")
 	, m_Profession(profession)
 	, m_Look(look)
@@ -900,6 +986,22 @@ VillagerActor::VillagerActor(float worldX, float worldY, unsigned int look, Prof
 	m_Board.homeX = worldX;
 	m_Board.homeY = worldY;
 	m_Gold = ProfessionOf(profession).startGold;
+	m_MaxHealth = ProfessionOf(profession).maxHealth;
+
+	// 모험가는 갈래마다 몸이 다르다. 방패병은 단단하고 마법사는 여리다.
+	if (profession == Profession::Adventurer)
+	{
+		const unsigned int kinds = static_cast<unsigned int>(Calling::Count) - 1u;
+		m_Calling = (calling != Calling::None) ? calling
+		                                       : static_cast<Calling>(1u + (look >> 5) % kinds);
+		m_MaxHealth = CallingOf(m_Calling).maxHealth;
+	}
+	m_Health = m_MaxHealth;
+
+	// 성향. 겉모습을 정한 값에서 서로 다른 자리를 떼어 쓴다.
+	m_Greed      = static_cast<float>((look >> 3) % 101u) / 100.0f;
+	m_Timidity   = static_cast<float>((look >> 11) % 101u) / 100.0f;
+	m_Wanderlust = static_cast<float>((look >> 19) % 101u) / 100.0f;
 
 	// 사람마다 조금씩 다르게. 가게 주인과 되찾아 온 사람은 자기 자리를 덜 벗어난다.
 	const float spread = static_cast<float>(look % 90u);
@@ -917,6 +1019,14 @@ VillagerActor::VillagerActor(float worldX, float worldY, unsigned int look, Prof
 		m_Board.patrolChance = 20.0f;
 		m_Board.attackRange = 300.0f;   // 사냥꾼은 멀리 던진다
 		m_Board.attackEvery = 1.2f;
+		break;
+	case Profession::Knight:
+		m_Board.patrolChance = 40.0f;   // 일이 없으면 울타리를 돈다
+		m_Board.attackEvery = 1.1f;
+		break;
+	case Profession::Adventurer:
+		m_Board.patrolChance = 25.0f;
+		m_Board.attackEvery = 1.3f;
 		break;
 	case Profession::Commoner:
 		m_Board.patrolChance = (perkIndex >= 0) ? 5.0f : 15.0f;
@@ -938,13 +1048,85 @@ VillagerActor::~VillagerActor()
 	}
 }
 
-void VillagerActor::AttachToGame(Game* game, float villageX, float villageY)
+void VillagerActor::AttachToGame(Game* game, int village, float villageX, float villageY)
 {
 	m_Game = game;
 	m_Id = game->NextVillagerId();
+	m_Village = village;
 	m_Board.villageX = villageX;
 	m_Board.villageY = villageY;
 	game->RegisterVillager(this);
+}
+
+void VillagerActor::Relocate(int village, float villageX, float villageY,
+                             float homeX, float homeY, long long houseKey)
+{
+	m_Village = village;
+	m_Board.villageX = villageX;
+	m_Board.villageY = villageY;
+	m_Board.homeX = homeX;
+	m_Board.homeY = homeY;
+	m_HouseKey = houseKey;
+	m_Decorations = 0;   // 장식은 옛 집에 두고 왔다
+	ClearWantsMove();
+}
+
+void VillagerActor::SetPath(const std::vector<std::pair<float, float> >& path)
+{
+	m_Path = path;
+	m_PathIndex = 0;
+	m_PathLimit = static_cast<size_t>(-1);
+	m_Board.hasTarget = false;
+	m_Board.timer = 0.0f;
+}
+
+bool VillagerActor::Waypoint(float& x, float& y) const
+{
+	if (m_PathIndex >= m_Path.size() || m_PathIndex >= m_PathLimit)
+	{
+		return false;
+	}
+	x = m_Path[m_PathIndex].first;
+	y = m_Path[m_PathIndex].second;
+	return true;
+}
+
+void VillagerActor::TakeMonsterHit(const ActorContext& context, float amount)
+{
+	if (m_Health <= 0.0f)
+	{
+		return;
+	}
+	amount *= CallingOf(m_Calling).toughness;   // 방패병은 덜 아프다
+	m_Health -= amount;
+	context.game->SpawnFloatingText(WorldX(), BodyCenterY(), "",
+	                                static_cast<int>(amount + 0.5f), kColorHurt, 12.0f);
+	if (m_Health <= 0.0f)
+	{
+		if (m_Hired)
+		{
+			context.game->SpawnFloatingText(WorldX(), WorldY() - 62.0f, DisplayName() + " 쓰러짐",
+			                                -1, kColorHurt, 14.0f);
+		}
+		if (m_Stolen > 0)
+		{
+			Surrender(context);
+		}
+		Destroy();
+	}
+}
+
+void VillagerActor::Wound(float amount)
+{
+	if (m_Health <= 0.0f)
+	{
+		return;
+	}
+	m_Health -= amount;
+	if (m_Health <= 0.0f)
+	{
+		Destroy();
+	}
 }
 
 std::string VillagerActor::DisplayName() const
@@ -952,6 +1134,10 @@ std::string VillagerActor::DisplayName() const
 	if (m_PerkIndex >= 0)
 	{
 		return Perks::At(m_PerkIndex).who;
+	}
+	if (m_Profession == Profession::Adventurer && m_Calling != Calling::None)
+	{
+		return std::string("모험가 · ") + CallingOf(m_Calling).name;
 	}
 	return ProfessionOf(m_Profession).name;
 }
@@ -970,7 +1156,8 @@ int VillagerActor::TakeGold(int amount)
 
 void VillagerActor::Provoke(float seconds)
 {
-	if (m_Health <= 0.0f)
+	// 함께 다니는 사람은 둘레의 소란에 휩쓸려 등을 돌리지 않는다
+	if (m_Health <= 0.0f || m_Hired)
 	{
 		return;
 	}
@@ -1119,10 +1306,26 @@ void VillagerActor::PickErrand(const ActorContext& context)
 
 	m_Board.errandWith = -1;
 
+	// 이사를 결심했다. 일행이 꾸려질 때까지 집 앞에서 짐을 싸며 기다린다.
+	if (m_WantsMove >= 0)
+	{
+		if (awayFromHome > 30.0f)
+		{
+			SetErrand(Errand::Tend, HomeX(), HomeY());
+		}
+		else
+		{
+			m_Board.errand = static_cast<int>(Errand::Tend);
+			m_Board.patrolling = false;
+			m_Board.timer = game->RandomRange(3.0f, 6.0f);
+		}
+		return;
+	}
+
 	if (m_Health < MaxHealth() * 0.6f && m_Profession != Profession::Doctor
 	    && m_Gold >= Prices::kVillagerDoctor)
 	{
-		if (VillagerActor* doctor = game->FindProfession(Profession::Doctor))
+		if (VillagerActor* doctor = game->FindProfession(Profession::Doctor, m_Village))
 		{
 			SetErrand(Errand::Doctor, doctor->WorldX(), doctor->WorldY(), doctor->Id());
 			return;
@@ -1163,7 +1366,7 @@ void VillagerActor::PickErrand(const ActorContext& context)
 
 	if (m_Thief && m_Gold < 12 && game->Roll(40))
 	{
-		if (VillagerActor* mark = game->RichestVillagerNear(WorldX(), WorldY(), 700.0f, m_Id))
+		if (VillagerActor* mark = game->RichestVillagerNear(WorldX(), WorldY(), 700.0f, m_Id, m_Village))
 		{
 			SetErrand(Errand::Steal, mark->WorldX(), mark->WorldY(), mark->Id());
 			return;
@@ -1172,7 +1375,7 @@ void VillagerActor::PickErrand(const ActorContext& context)
 
 	if (m_Profession != Profession::Merchant && m_Gold >= Prices::kVillagerShop + 2 && game->Roll(25))
 	{
-		if (VillagerActor* merchant = game->FindProfession(Profession::Merchant))
+		if (VillagerActor* merchant = game->FindProfession(Profession::Merchant, m_Village))
 		{
 			SetErrand(Errand::Shop, merchant->WorldX(), merchant->WorldY(), merchant->Id());
 			return;
@@ -1301,6 +1504,8 @@ void VillagerActor::TrySteal(const ActorContext& context)
 		return;
 	}
 
+	game->NoteTheft(m_Village);
+
 	m_Stolen += amount;
 	m_StolenFrom = mark->Id();
 	m_HitsTaken = 0;
@@ -1317,11 +1522,371 @@ void VillagerActor::TrySteal(const ActorContext& context)
 	}
 }
 
+// ═══ 고용된 모험가 ═════════════════════════════════════════════════
+//
+// 플레이어가 돈을 주고 고용하면 다음 마을까지 함께 다닌다. 줄 선 차례대로
+// 플레이어의 발자취를 밟아 따라오고(동행자처럼), 적이 보이면 갈래대로 싸운다.
+//
+//   전사     달려들어 벤다. 칼끝 둘레의 적도 함께 맞고 밀려난다
+//   방패병   플레이어와 적 사이에 막아선다. 이따금 둘레의 적을 제게로 끈다(도발)
+//   궁수     걸으면서 쏜다. 적이 붙으면 물러나 거리를 벌린다
+//   마법사   무리 한가운데 불덩이를 떨군다. 붙으면 물러난다
+//   힐러     다친 사람(플레이어 · 파티)을 고친다. 한가하면 빛 조각을 던진다
+//
+// 플레이어에게서 너무 먼 적은 쫓지 않는다 — 지킬 사람을 두고 숲으로 들어가지 않는다.
+// 피해는 플레이어 레벨에 따라 커진다(동행자와 같은 배율).
+//
+void VillagerActor::Hire(int untilVillage, int slot)
+{
+	m_Hired = true;
+	m_HireUntil = untilVillage;
+	m_PartySlot = slot;
+	m_SkillTimer = 1.0f;
+
+	// 하던 일은 모두 내려놓는다
+	m_Board.hasTarget = false;
+	m_Board.timer = 0.0f;
+	m_Board.grudge = 0.0f;
+	m_Board.patrolling = false;
+	EndQuarrel();
+	ClearWantsMove();
+	ClearPath();
+}
+
+void VillagerActor::Dismiss()
+{
+	m_Hired = false;
+	m_HireUntil = -1;
+}
+
+void VillagerActor::PartyStep(const ActorContext& context, float targetX, float targetY, float speed)
+{
+	float dx = targetX - WorldX();
+	float dy = targetY - WorldY();
+	const float length = std::sqrt(dx * dx + dy * dy);
+	if (length < 0.5f)
+	{
+		return;
+	}
+	const float step = std::min(length, speed * context.deltaSeconds);
+	dx = dx / length * step;
+	dy = dy / length * step;
+
+	float x = WorldX();
+	float y = WorldY();
+	if (!context.game->MoveBody(x, y, dx, dy, kVillagerHalfSize, false))
+	{
+		// 모서리에 끼었다. 플레이어를 놓치는 것보다는 낫다 — 그냥 지나간다.
+		x += dx;
+		y += dy;
+	}
+	SetPosition(x, y);
+}
+
+void VillagerActor::FollowPlayer(const ActorContext& context)
+{
+	const PlayerActor* player = context.player;
+	float x = player->WorldX();
+	float y = player->WorldY();
+	player->TrailPoint(kPartyLag + kPartySpacing * static_cast<float>(m_PartySlot), x, y);
+
+	const float distance = Distance(WorldX(), WorldY(), x, y);
+	if (distance < 6.0f)
+	{
+		return;
+	}
+
+	// 플레이어 걸음에 맞춘다. 많이 벌어지면 뛴다.
+	float speed = Progression::MoveSpeed(player->Combat().level) * 1.05f;
+	if (distance > 90.0f)
+	{
+		speed *= 1.7f;
+	}
+	PartyStep(context, x, y, speed);
+}
+
+void VillagerActor::ServeParty(const ActorContext& context)
+{
+	Game* game = context.game;
+	PlayerActor* player = context.player;
+	const CallingInfo& info = CallingOf(m_Calling);
+	const float power = 1.0f + 0.12f * static_cast<float>(player->Combat().level - 1);
+
+	m_Board.hasTarget = false;
+	m_Board.timer = 0.0f;
+	m_Board.patrolling = false;
+	m_Board.activity = "따라간다";
+	m_SkillTimer = std::max(0.0f, m_SkillTimer - context.deltaSeconds);
+
+	if (game->IsRespawning())
+	{
+		m_Board.activity = "기다린다";
+		return;
+	}
+
+	// 벽 너머에 걸렸거나 너무 떨어졌다. 화면 밖이니 플레이어의 발자취 위로 옮겨 붙는다.
+	if (Distance(WorldX(), WorldY(), player->WorldX(), player->WorldY()) > kPartyCatchUp)
+	{
+		float x = player->WorldX();
+		float y = player->WorldY();
+		player->TrailPoint(kPartyLag + kPartySpacing * static_cast<float>(m_PartySlot), x, y);
+		SetPosition(x, y);
+		return;
+	}
+
+	// ── 노릴 적 ── 내 둘레에서 가장 가까운 것. 플레이어에게서 먼 적은 두고 간다.
+	EnemyActor* foe = NULL;
+	float foeDistance = kPartyNotice;
+	const std::vector<EnemyActor*>& enemies = game->Enemies();
+	for (size_t i = 0; i < enemies.size(); ++i)
+	{
+		EnemyActor* enemy = enemies[i];
+		if (enemy->IsDying()
+		    || Distance(enemy->WorldX(), enemy->WorldY(), player->WorldX(), player->WorldY()) > kPartyLeash)
+		{
+			continue;
+		}
+		const float distance = Distance(WorldX(), BodyCenterY(), enemy->WorldX(), enemy->BodyCenterY());
+		if (distance < foeDistance)
+		{
+			foeDistance = distance;
+			foe = enemy;
+		}
+	}
+
+	const float bodyX = WorldX() + m_Facing * 6.0f;
+	const float bodyY = BodyCenterY();
+	const bool ready = m_Board.attackCooldown <= 0.0f;
+	const float run = Progression::MoveSpeed(player->Combat().level) * 1.15f;
+	bool engaged = false;   // 싸우느라 줄을 벗어났는가. 아니면 따라가면서 싸운다
+
+	auto face = [&](const Actor* target)
+	{
+		m_Facing = (target->WorldX() >= WorldX()) ? 1.0f : -1.0f;
+		m_FacingHold = 0.5f;
+	};
+
+	// 적이 gap보다 가까우면 반대쪽으로 물러난다. 물러났으면 true.
+	auto backOff = [&](const EnemyActor* from, float gap)
+	{
+		const float dx = WorldX() - from->WorldX();
+		const float dy = WorldY() - from->WorldY();
+		const float length = std::sqrt(dx * dx + dy * dy);
+		if (length >= gap || length < 0.001f)
+		{
+			return false;
+		}
+		PartyStep(context, WorldX() + dx / length * 60.0f, WorldY() + dy / length * 60.0f, run);
+		return true;
+	};
+
+	auto shoot = [&](ThrownActor::Kind kind, const EnemyActor* target, float speed, float range)
+	{
+		const bool lands = (kind == ThrownActor::Kind::Fireball);
+		std::unique_ptr<ThrownActor> shot(new ThrownActor(
+			kind, ThrownActor::Team::HitsEnemies, bodyX, bodyY,
+			target->WorldX(), lands ? target->WorldY() : target->BodyCenterY(),
+			speed, info.damage * power, range));
+		shot->SetOwner(m_Id);   // 쓰러뜨리면 현상금은 이 사람 몫이다
+		if (lands)
+		{
+			shot->SetBlast(78.0f);
+		}
+		context.scene->Spawn(std::unique_ptr<Actor>(shot.release()));
+		m_Board.attackCooldown = info.every;
+	};
+
+	switch (m_Calling)
+	{
+	case Calling::Warrior:
+		if (foe != NULL)
+		{
+			engaged = true;
+			m_Board.activity = "벤다";
+			face(foe);
+			if (foeDistance > info.reach * 0.7f)
+			{
+				PartyStep(context, foe->WorldX(), foe->WorldY(), run);
+			}
+			if (ready && foeDistance <= info.reach + foe->Radius())
+			{
+				StrikeAround(context, foe->WorldX(), foe->BodyCenterY(), 40.0f, info.damage * power, 140.0f);
+				std::unique_ptr<EffectActor> slash(new EffectActor(
+					EffectActor::Kind::Slash, foe->WorldX(), foe->WorldY(), 30.0f, 0.22f, info.tint));
+				slash->SetAngle(std::atan2(-(foe->WorldY() - WorldY()), foe->WorldX() - WorldX()));
+				context.scene->Spawn(std::unique_ptr<Actor>(slash.release()));
+				m_Board.attackCooldown = info.every;
+			}
+		}
+		break;
+
+	case Calling::Guardian:
+		if (foe != NULL)
+		{
+			engaged = true;
+			m_Board.activity = "막아선다";
+			face(foe);
+
+			// 적 바로 앞, 플레이어 쪽에 선다
+			float standX = foe->WorldX();
+			float standY = foe->WorldY();
+			const float awayX = player->WorldX() - foe->WorldX();
+			const float awayY = player->WorldY() - foe->WorldY();
+			const float length = std::sqrt(awayX * awayX + awayY * awayY);
+			if (length > 0.001f)
+			{
+				standX += awayX / length * 26.0f;
+				standY += awayY / length * 26.0f;
+			}
+			if (Distance(WorldX(), WorldY(), standX, standY) > 8.0f)
+			{
+				PartyStep(context, standX, standY, run);
+			}
+
+			// 도발 — 둘레의 적이 한동안 나만 노린다
+			if (m_SkillTimer <= 0.0f)
+			{
+				int drawn = 0;
+				for (size_t i = 0; i < enemies.size(); ++i)
+				{
+					EnemyActor* enemy = enemies[i];
+					if (!enemy->IsDying() && !enemy->IsWarden()
+					    && Distance(WorldX(), WorldY(), enemy->WorldX(), enemy->WorldY()) < 180.0f)
+					{
+						enemy->Taunt(m_Id, 4.5f);
+						++drawn;
+					}
+				}
+				if (drawn > 0)
+				{
+					context.scene->Spawn(std::unique_ptr<Actor>(new EffectActor(
+						EffectActor::Kind::Shockwave, WorldX(), WorldY(), 180.0f, 0.45f, info.tint)));
+					game->SpawnFloatingText(WorldX(), WorldY() - 62.0f, "도발", -1, info.tint, 13.0f);
+					m_SkillTimer = 7.0f;
+					m_CastGlow = 1.0f;
+				}
+			}
+
+			if (ready && foeDistance <= info.reach + foe->Radius())
+			{
+				foe->TakeDamage(context, info.damage * power, bodyX, bodyY);
+				m_Board.attackCooldown = info.every;
+			}
+		}
+		break;
+
+	case Calling::Archer:
+		if (foe != NULL && foeDistance <= info.reach)
+		{
+			m_Board.activity = "쏜다";
+			face(foe);
+			engaged = backOff(foe, 130.0f);
+			if (ready)
+			{
+				shoot(ThrownActor::Kind::Arrow, foe, 760.0f, info.reach * 1.2f);
+			}
+		}
+		break;
+
+	case Calling::Mage:
+		if (foe != NULL && foeDistance <= info.reach)
+		{
+			m_Board.activity = "주문을 왼다";
+			face(foe);
+			engaged = backOff(foe, 110.0f);
+			if (ready)
+			{
+				shoot(ThrownActor::Kind::Fireball, foe, 430.0f, 0.0f);
+				m_CastGlow = 1.0f;
+			}
+		}
+		break;
+
+	case Calling::Healer:
+	{
+		// 가장 많이 다친 사람을 고친다. 플레이어는 75%, 파티는 60% 아래부터.
+		if (m_SkillTimer <= 0.0f)
+		{
+			const Actor* patient = NULL;
+			float worst = 1.0f;
+
+			const float playerRatio = player->Combat().health / std::max(1.0f, player->MaxHealth());
+			if (playerRatio < 0.75f && Distance(WorldX(), WorldY(), player->WorldX(), player->WorldY()) < 320.0f)
+			{
+				patient = player;
+				worst = playerRatio;
+			}
+
+			VillagerActor* ally = NULL;
+			const std::vector<int>& party = game->Party();
+			for (size_t i = 0; i < party.size(); ++i)
+			{
+				VillagerActor* member = game->FindVillager(party[i]);
+				if (member == NULL || Distance(WorldX(), WorldY(), member->WorldX(), member->WorldY()) > 320.0f)
+				{
+					continue;
+				}
+				const float ratio = member->Health() / std::max(1.0f, member->MaxHealth());
+				if (ratio < 0.6f && ratio < worst)
+				{
+					patient = member;
+					ally = member;
+					worst = ratio;
+				}
+			}
+
+			if (patient != NULL)
+			{
+				if (ally != NULL)
+				{
+					ally->Heal(ally->MaxHealth() * 0.35f);
+				}
+				else
+				{
+					player->Heal(player->MaxHealth() * 0.15f);
+				}
+				std::unique_ptr<EffectActor> light(new EffectActor(
+					EffectActor::Kind::Blessing, patient->WorldX(), patient->WorldY(), 40.0f, 0.9f, info.tint));
+				light->Follow(patient);
+				context.scene->Spawn(std::unique_ptr<Actor>(light.release()));
+				game->SpawnFloatingText(patient->WorldX(), patient->WorldY() - 58.0f, "치유", -1, info.tint, 13.0f);
+				m_Board.activity = "치유한다";
+				m_SkillTimer = 5.0f;
+				m_CastGlow = 1.0f;
+			}
+		}
+
+		if (foe != NULL && foeDistance <= info.reach && ready)
+		{
+			face(foe);
+			shoot(ThrownActor::Kind::Light, foe, 640.0f, info.reach * 1.2f);
+		}
+		break;
+	}
+
+	default:
+		// 갈래가 없는 모험가(이론상 없다) — 돌을 던진다
+		if (foe != NULL && foeDistance <= info.reach && ready)
+		{
+			face(foe);
+			shoot(ThrownActor::Kind::Stone, foe, kStoneSpeed, info.reach * 1.25f);
+		}
+		break;
+	}
+
+	if (!engaged)
+	{
+		FollowPlayer(context);
+	}
+}
+
 //
 //   Selector
+//    ├ [고용되었나?]           → 플레이어를 따라다니며 갈래대로 싸운다
 //    ├ [원한이 있나?]          → 플레이어에게 돌을 던진다
 //    ├ [다투는 중인가?]        → 도둑을 쫓는다 / 돌아서서 맞선다
 //    ├ [훔쳐서 달아나는 중?]   → 집으로 달아난다
+//    ├ [길을 가는 중인가?]     → 일행과 이웃 마을로 / 새 집으로. 호위는 어둠에 맞선다
 //    ├ [어둠이 보이나?]        → 다가가 돌을 던진다
 //    ├ [플레이어가 가까운가?]  → 멈춰서 쳐다본다
 //    ├ [쉬는 중인가?]          → 장사한다 / 경계한다 / 쉰다 …
@@ -1343,9 +1908,11 @@ void VillagerActor::BuildTree()
 	};
 	const Branch branches[] =
 	{
+		{ IsInParty,        TravelWithPlayer },
 		{ HoldsGrudge,      TakeRevenge },
 		{ IsQuarreling,     Quarrel },
 		{ IsRunningOff,     RunHome },
+		{ IsTraveling,      TravelWithTrip },
 		{ SeesEnemy,        DefendVillage },
 		{ PlayerIsNear,     LookAtPlayer },
 		{ IsResting,        Rest },
@@ -1393,8 +1960,11 @@ void VillagerActor::OnUpdate(const ActorContext& context)
 {
 	const float deltaSeconds = context.deltaSeconds;
 	const float beforeX = WorldX();
+	const float beforeY = WorldY();
 
 	m_Board.attackCooldown = std::max(0.0f, m_Board.attackCooldown - deltaSeconds);
+	m_CastGlow = std::max(0.0f, m_CastGlow - deltaSeconds * 2.5f);
+	m_FacingHold = std::max(0.0f, m_FacingHold - deltaSeconds);
 	m_Board.grudge = std::max(0.0f, m_Board.grudge - deltaSeconds);
 	m_Board.quarrel = std::max(0.0f, m_Board.quarrel - deltaSeconds);
 	if (m_Board.quarrel <= 0.0f)
@@ -1410,6 +1980,16 @@ void VillagerActor::OnUpdate(const ActorContext& context)
 
 	// 천천히 아문다
 	m_Health = std::min(MaxHealth(), m_Health + deltaSeconds / 3.0f);
+
+	// 이사하고 싶은 마음은 일행이 꾸려지지 않으면 시간이 지나며 식는다
+	if (m_WantsMove >= 0 && m_Trip < 0)
+	{
+		m_WantTimer -= deltaSeconds;
+		if (m_WantTimer <= 0.0f)
+		{
+			ClearWantsMove();
+		}
+	}
 
 	// 품삯. 사냥꾼은 현상금으로, 가게 주인은 손님에게서 번다.
 	m_WageTimer -= deltaSeconds;
@@ -1435,6 +2015,7 @@ void VillagerActor::OnUpdate(const ActorContext& context)
 	}
 
 	// 빛이 닿는 곳까지가 마을이다. 종지기 노인이 오면 그만큼 넓어진다.
+	// (길을 가는 동안은 이 줄에 매이지 않는다 — 여정 가지가 따로 움직인다)
 	m_Board.leash = BeaconRadius() * context.game->Mods().beaconScale - 50.0f;
 
 	// 칠판에 이번 프레임의 사정을 적어 둔다. 마디들은 이것만 보고 판단한다.
@@ -1473,10 +2054,18 @@ void VillagerActor::OnUpdate(const ActorContext& context)
 
 	// 몸을 돌린다. 다투거나 싸우는 중이면 상대 쪽을, 아니면 걸어가는 쪽을 본다.
 	const float moved = WorldX() - beforeX;
-	m_Walking = std::fabs(moved) > 0.001f || m_Board.hasTarget;
+	m_Walking = std::fabs(moved) > 0.001f || std::fabs(WorldY() - beforeY) > 0.001f || m_Board.hasTarget;
 
 	VillagerActor* quarry = InQuarrel() ? context.game->FindVillager(m_Board.quarry) : NULL;
-	if (HasGrudge() || (m_Board.playerDistance < kNoticeRange && quarry == NULL))
+	if (m_Hired)
+	{
+		// 함께 다니는 사람은 싸운 쪽을 잠깐 보고, 아니면 걸어가는 쪽을 본다(ServeParty)
+		if (m_FacingHold <= 0.0f && std::fabs(moved) > 0.001f)
+		{
+			m_Facing = (moved > 0.0f) ? 1.0f : -1.0f;
+		}
+	}
+	else if (HasGrudge() || (m_Board.playerDistance < kNoticeRange && quarry == NULL))
 	{
 		m_Facing = (context.player->WorldX() >= WorldX()) ? 1.0f : -1.0f;
 	}
@@ -1520,8 +2109,19 @@ void VillagerActor::OnDraw(const DrawContext& context) const
 
 	DrawShadow(r, x, y, 11.0f);
 
+	// 모험가는 갈래의 빛깔을 입는다
+	const bool adventurer = (m_Profession == Profession::Adventurer && m_Calling != Calling::None);
+	const CallingInfo& calling = CallingOf(m_Calling);
+
+	// 고용된 사람은 발밑에 제 빛깔의 고리가 돈다. 파티가 누구인지 한눈에 보이도록.
+	if (m_Hired)
+	{
+		const Color ring = { calling.tint[0], calling.tint[1], calling.tint[2], 0.55f };
+		r->DrawEllipse(x, y, 15.0f, 5.5f, ring, 0.0f, 0.5f + 0.6f * m_CastGlow, 1.5f);
+	}
+
 	FigureLook look;
-	look.body = Tint(info.tint, shade);
+	look.body = Tint(adventurer ? calling.tint : info.tint, shade);
 	look.skin = Tint(kLiving, shade);
 	look.hair = Tint(kHair, shade);
 	look.hooded = (m_Profession == Profession::Hunter || m_Profession == Profession::Informant)
@@ -1551,9 +2151,128 @@ void VillagerActor::OnDraw(const DrawContext& context) const
 		                   Mix(look.body.b, kAngerRed[2] * shade, 0.55f), 1.0f };
 	}
 
-	DrawFigure(r, x, y, look);
+	if (m_Profession == Profession::Knight
+	    || (adventurer && (m_Calling == Calling::Guardian || m_Calling == Calling::Warrior)))
+	{
+		look.hair = Tint(kSteel, shade * 1.05f);   // 투구
+	}
+	if (adventurer && m_Calling == Calling::Healer)
+	{
+		look.hooded = true;
+		look.hair = Tint(kStone, shade * 2.1f);    // 흰 두건
+	}
+
+	// 이사 가는 사람은 등에 짐을 진다
+	const bool moving = (m_Trip >= 0 && !m_Escort && m_Profession != Profession::Courier);
+	if (moving)
+	{
+		r->DrawRoundRect(x - m_Facing * 7.0f, y + 22.0f, 11.0f, 13.0f, 3.0f, Tint(kWood, shade));
+	}
+
+	// 궁수는 등에 화살통을 멘다(몸보다 먼저 그려 뒤에 보이게)
+	if (adventurer && m_Calling == Calling::Archer)
+	{
+		r->DrawRoundRect(x - m_Facing * 6.0f, y + 20.0f, 5.0f, 13.0f, 2.0f, Tint(kWoodDark, shade * 1.2f),
+		                 m_Facing * 0.35f);
+		r->DrawSegment(x - m_Facing * 7.5f, y + 26.0f, x - m_Facing * 9.5f, y + 31.0f, 1.2f, Tint(kHair, shade * 1.4f));
+		r->DrawSegment(x - m_Facing * 5.0f, y + 26.5f, x - m_Facing * 6.0f, y + 32.0f, 1.2f, Tint(kHair, shade * 1.4f));
+	}
+
+	float handX = x;
+	float handY = y;
+	DrawFigure(r, x, y, look, &handX, &handY);
+
+	if (adventurer)
+	{
+		const float f = m_Facing;
+		switch (m_Calling)
+		{
+		case Calling::Warrior:
+			// 손에 든 긴 칼
+			r->DrawSegment(handX, handY, handX + f * 6.0f, handY + 20.0f, 2.6f, Tint(kSteel, shade * 1.25f));
+			r->DrawSegment(handX - f * 3.0f, handY + 3.0f, handX + f * 3.5f, handY + 1.5f, 2.0f, Tint(kGold, shade));
+			break;
+
+		case Calling::Guardian:
+			// 앞에 든 큰 방패
+			r->DrawRoundRect(x + f * 9.0f, y + 15.0f, 10.0f, 16.0f, 3.0f, Tint(kSteel, shade * 0.95f));
+			r->DrawRoundRect(x + f * 9.0f, y + 15.0f, 6.0f, 12.0f, 2.0f, Tint(calling.tint, shade * 1.1f));
+			r->DrawCircle(x + f * 9.0f, y + 15.5f, 1.6f, Tint(kGold, shade));
+			break;
+
+		case Calling::Archer:
+		{
+			// 손에 쥔 활 — 앞으로 휜 활대와 곧은 시위
+			const float bowX = handX + f * 2.0f;
+			const float bowY = handY + 6.0f;
+			float prevX = bowX;
+			float prevY = bowY - 11.0f;
+			for (int i = 1; i <= 6; ++i)
+			{
+				const float t = static_cast<float>(i) / 6.0f;
+				const float px = bowX + f * std::sin(t * 3.14159265f) * 5.5f;
+				const float py = bowY - 11.0f + 22.0f * t;
+				r->DrawSegment(prevX, prevY, px, py, 1.8f, Tint(kWood, shade * 1.2f));
+				prevX = px;
+				prevY = py;
+			}
+			r->DrawSegment(bowX, bowY - 11.0f, bowX, bowY + 11.0f, 0.8f, Tint(kStone, shade * 2.0f));
+			break;
+		}
+
+		case Calling::Healer:
+		{
+			// 끝이 빛나는 지팡이
+			const float topY = handY + 22.0f;
+			r->DrawSegment(handX, handY - 9.0f, handX, topY, 1.8f, Tint(kWood, shade * 1.2f));
+			const float glow = 0.6f + 0.4f * std::sin(context.time * 3.0f) + m_CastGlow;
+			r->DrawCircle(handX, topY + 2.0f, 3.2f, Tint(calling.tint, 1.15f), 0.8f * glow);
+			break;
+		}
+
+		case Calling::Mage:
+		{
+			// 뾰족 모자와 보랏빛 구슬 지팡이
+			r->DrawTriangle(x - f * 0.5f, y + 37.0f + look.bob, 15.0f, 14.0f, Tint(calling.tint, shade * 0.8f), -f * 0.18f);
+			r->DrawRoundRect(x, y + 31.0f + look.bob, 16.0f, 2.6f, 1.2f, Tint(calling.tint, shade * 0.7f));
+			const float topY = handY + 20.0f;
+			r->DrawSegment(handX, handY - 8.0f, handX, topY, 1.8f, Tint(kWoodDark, shade * 1.3f));
+			const float pulse = 0.6f + 0.4f * std::sin(context.time * 4.0f) + m_CastGlow;
+			const float orb[3] = { 0.78f, 0.56f, 1.0f };
+			r->DrawCircle(handX, topY + 2.5f, 3.4f, Tint(orb, 1.0f), 1.0f * pulse);
+			break;
+		}
+
+		default:
+			break;
+		}
+	}
+
+	// 기사(와 갈래 없는 모험가)는 칼을 찬다, 전령은 편지 가방을 멘다
+	if (m_Profession == Profession::Knight || (m_Profession == Profession::Adventurer && !adventurer))
+	{
+		r->DrawSegment(x + m_Facing * 7.0f, y + 6.0f, x + m_Facing * 9.0f, y + 22.0f, 2.2f,
+		               Tint(kSteel, shade * 1.2f));
+	}
+	else if (m_Profession == Profession::Courier)
+	{
+		r->DrawRoundRect(x - m_Facing * 5.0f, y + 12.0f, 9.0f, 7.0f, 1.5f, Tint(kWood, shade * 1.15f));
+		r->DrawRoundRect(x - m_Facing * 5.0f, y + 12.5f, 5.0f, 2.0f, 0.5f, Tint(kStone, shade * 2.0f));
+	}
 
 	const float bob = std::sin(context.time * 6.0f) * 1.5f;
+
+	// 고용된 사람은 머리 위에 체력이 보인다. 지켜 줘야 할 사람이기도 하다.
+	if (m_Hired)
+	{
+		const float barY = y + 50.0f;
+		const float ratio = std::max(0.0f, m_Health / std::max(1.0f, m_MaxHealth));
+		const Color track = { 0.03f, 0.03f, 0.05f, 0.8f };
+		const Color fill = (ratio < 0.35f) ? Color{ 0.85f, 0.25f, 0.2f, 1.0f }
+		                                   : Color{ calling.tint[0], calling.tint[1], calling.tint[2], 1.0f };
+		r->DrawRoundRect(x, barY, 28.0f, 5.0f, 2.5f, track);
+		r->DrawRoundRect(x - 13.0f * (1.0f - ratio), barY, 26.0f * ratio, 3.0f, 1.5f, fill);
+	}
 
 	// 머리 위의 느낌표 — 붉으면 플레이어에게, 주황이면 마을 사람에게 화가 났다
 	if (angry || quarreling)

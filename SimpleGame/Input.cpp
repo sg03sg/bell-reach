@@ -72,3 +72,24 @@ bool Input::PlaceFire() const
 {
 	return m_Ascii['e'];
 }
+
+void Input::OnMouseButton(int button, bool down, float x, float y)
+{
+	m_MouseX = x;
+	m_MouseY = y;
+	if (button >= 0 && button < kMouseButtons)
+	{
+		m_MouseDown[button] = down;
+	}
+}
+
+void Input::OnMouseMove(float x, float y)
+{
+	m_MouseX = x;
+	m_MouseY = y;
+}
+
+void Input::OnWheel(float amount)
+{
+	m_Wheel += amount;
+}

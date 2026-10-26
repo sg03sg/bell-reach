@@ -115,6 +115,15 @@
   </div>
 
   <div class="card wide">
+    <h2>사람 사는 마을 · 숲길의 일행</h2>
+    <table>
+      <thead><tr><th>마을</th><th class="num">주민</th><th class="num">넉넉함</th><th class="num">위험</th><th class="num">도둑</th><th class="num">들은 소식</th><th class="num">다음 편지</th></tr></thead>
+      <tbody id="lives"></tbody>
+    </table>
+    <div id="trips" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card wide">
     <h2>마을별 상태</h2>
     <table>
       <thead><tr>
@@ -209,6 +218,21 @@ function draw(d) {
       <td class="num">${v.power.toFixed(2)}</td>
     </tr>`);
 
+  rows($('lives'), d.lives || [], l => `
+    <tr>
+      <td>${l.village === 0 ? '<span class="tag home">첫 마을</span>' : `<b>${l.village + 1}번째</b>`}</td>
+      <td class="num">${l.residents}</td>
+      <td class="num">${l.prosperity.toFixed(1)}</td>
+      <td class="num">${l.danger.toFixed(2)}</td>
+      <td class="num">${l.thefts.toFixed(1)}</td>
+      <td class="num">${l.rumors}</td>
+      <td class="num" style="color:var(--dim)">${Math.round(l.mailNext)}초</td>
+    </tr>`);
+  $('trips').innerHTML = (d.trips && d.trips.length)
+    ? d.trips.map(t => `<span class="tag ${t.mail ? 'on' : 'off'}" style="margin:0 6px 6px 0">
+        ${t.from + 1} → ${t.to + 1} · ${esc(t.phase)} · 여행자 ${t.passengers} · 호위 ${t.escorts}${t.mail ? ' · 편지' : ''}</span>`).join('')
+    : '<div class="empty">숲길을 건너는 일행이 없다</div>';
+
   rows($('npcs'), d.npcs, n => {
     const tags = [];
     if (n.rescued) tags.push('<span class="tag on">합류</span>');
@@ -217,6 +241,10 @@ function draw(d) {
     if (n.quarrel) tags.push('<span class="tag warn">다툼</span>');
     if (n.stolen > 0) tags.push(`<span class="tag warn">훔침 ${n.stolen}</span>`);
     if (n.thief) tags.push('<span class="tag off">좀도둑</span>');
+    if (n.trip >= 0) tags.push(`<span class="tag on">${n.escort ? '호위' : '길 위'}</span>`);
+    if (n.wantsMove >= 0) tags.push(`<span class="tag on">→ ${n.wantsMove + 1}번째로 이사</span>`);
+    if (n.hired) tags.push(`<span class="tag on">파티 · ${n.hiredUntil + 1}번째 마을까지</span>`);
+    if (n.village !== undefined) tags.unshift(`<span class="tag off">${n.village + 1}</span>`);
     let doing = esc(n.activity);
     if (n.type === 'companion') {
       const ready = n.cooldown <= 0.01;

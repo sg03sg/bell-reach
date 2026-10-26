@@ -136,8 +136,6 @@ struct PlayerCombat
 	float shield = 0.0f;           // 수도승의 기도가 씌운 보호막이 남은 시간
 	int deaths = 0;
 
-	// 마을에서 쓰는 것
+	// 마을에서 쓰는 것. 산 물건은 가방(Items.h)에 든다
 	int gold = 0;
-	int torches = 0;               // 상인에게 산 횃불. R로 그 자리에 세운다
-	int healPacks = 0;             // 상인에게 산 회복약. Q로 마신다
 };

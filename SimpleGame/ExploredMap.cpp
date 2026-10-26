@@ -1,43 +1,65 @@
 #include "stdafx.h"
 #include "ExploredMap.h"
 
+#include "Regions.h"
 #include "World.h"
 
 namespace
 {
-	long long PackKey(int chunkX, int chunkY)
+	long long PackKey(int regionX, int regionY)
 	{
-		return (static_cast<long long>(chunkY) << 32)
-		     | static_cast<long long>(static_cast<unsigned int>(chunkX));
+		return (static_cast<long long>(regionY) << 32)
+		     | static_cast<long long>(static_cast<unsigned int>(regionX));
 	}
 }
 
-void ExploredMap::Mark(int tileX, int tileY)
+int ExploredMap::Span()
 {
-	const int n = World::kChunkTiles;
-	std::vector<unsigned char>& cells =
-		m_Chunks[PackKey(World::FloorDiv(tileX, n), World::FloorDiv(tileY, n))];
+	return Regions::RegionTileSpan();
+}
 
-	if (cells.empty())
+std::vector<unsigned char>& ExploredMap::SheetFor(int regionX, int regionY)
+{
+	std::vector<unsigned char>& sheet = m_Sheets[PackKey(regionX, regionY)];
+	if (sheet.empty())
 	{
-		cells.assign(static_cast<size_t>(n) * n, 0);
+		// 클래스 상수를 참조로 넘기면 링크 에러가 날 수 있어 복사해 넘긴다.
+		const unsigned char unseen = kUnseen;
+		sheet.assign(static_cast<size_t>(Span()) * Span(), unseen);
 	}
+	return sheet;
+}
 
-	unsigned char& cell = cells[World::PositiveMod(tileY, n) * n + World::PositiveMod(tileX, n)];
-	if (cell == 0)
+bool ExploredMap::Mark(int tileX, int tileY)
+{
+	const int span = Span();
+	std::vector<unsigned char>& sheet = SheetFor(Regions::RegionOfTile(tileX), Regions::RegionOfTile(tileY));
+
+	unsigned char& cell = sheet[static_cast<size_t>(World::PositiveMod(tileY, span)) * span
+	                            + World::PositiveMod(tileX, span)];
+	if (cell == kSeen)
 	{
-		cell = 1;
-		++m_Version;
+		return false;
 	}
+	cell = kSeen;
+	++m_Version;
+	return true;
 }
 
 bool ExploredMap::IsSeen(int tileX, int tileY) const
 {
-	const int n = World::kChunkTiles;
-	auto found = m_Chunks.find(PackKey(World::FloorDiv(tileX, n), World::FloorDiv(tileY, n)));
-	if (found == m_Chunks.end())
+	const int span = Span();
+	const unsigned char* mask = Mask(Regions::RegionOfTile(tileX), Regions::RegionOfTile(tileY));
+	if (mask == NULL)
 	{
 		return false;
 	}
-	return found->second[World::PositiveMod(tileY, n) * n + World::PositiveMod(tileX, n)] != 0;
+	return mask[static_cast<size_t>(World::PositiveMod(tileY, span)) * span
+	            + World::PositiveMod(tileX, span)] == kSeen;
+}
+
+const unsigned char* ExploredMap::Mask(int regionX, int regionY) const
+{
+	auto found = m_Sheets.find(PackKey(regionX, regionY));
+	return (found == m_Sheets.end()) ? NULL : found->second.data();
 }

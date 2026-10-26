@@ -264,7 +264,8 @@ bool CompanionActor::UseSkill(const ActorContext& context)
 // ═══ 던지는 것 ════════════════════════════════════════════════════
 ThrownActor::ThrownActor(Kind kind, Team team, float worldX, float worldY,
                          float targetX, float targetY, float speed, float damage, float range)
-	: Actor(kind == Kind::Arrow ? "Arrow" : (kind == Kind::Bomb ? "Bomb" : "Stone"))
+	: Actor((kind == Kind::Arrow || kind == Kind::Light) ? "Arrow"
+	        : ((kind == Kind::Bomb || kind == Kind::Fireball) ? "Bomb" : "Stone"))
 	, m_Kind(kind)
 	, m_Team(team)
 	, m_Damage(damage)
@@ -289,8 +290,8 @@ ThrownActor::ThrownActor(Kind kind, Team team, float worldX, float worldY,
 	m_VX = dx * speed;
 	m_VY = dy * speed;
 
-	// 폭약은 과녁 자리까지만 날아가 떨어진다
-	if (kind == Kind::Bomb)
+	// 폭약과 불덩이는 과녁 자리까지만 날아가 떨어진다
+	if (kind == Kind::Bomb || kind == Kind::Fireball)
 	{
 		m_Range = std::max(24.0f, length);
 	}
@@ -305,7 +306,7 @@ void ThrownActor::OnUpdate(const ActorContext& context)
 	m_Flown += speed * deltaSeconds;
 	m_Spin += deltaSeconds * 13.0f;
 
-	if (m_Kind == Kind::Bomb)
+	if (m_Kind == Kind::Bomb || m_Kind == Kind::Fireball)
 	{
 		if (m_Flown >= m_Range)
 		{
@@ -390,9 +391,12 @@ void ThrownActor::Explode(const ActorContext& context)
 		enemy->TakeDamage(context, m_Damage * falloff, WorldX(), WorldY());
 	}
 
-	const float tint[3] = { 1.0f, 0.62f, 0.25f };
+	// 마법사의 불덩이는 보랏빛이 도는 불로 터진다
+	const float powder[3] = { 1.0f, 0.62f, 0.25f };
+	const float arcane[3] = { 0.78f, 0.52f, 1.0f };
 	context.scene->Spawn(std::unique_ptr<Actor>(new EffectActor(
-		EffectActor::Kind::Blast, WorldX(), WorldY(), m_Blast, 0.55f, tint)));
+		EffectActor::Kind::Blast, WorldX(), WorldY(), m_Blast, 0.55f,
+		(m_Kind == Kind::Fireball) ? arcane : powder)));
 }
 
 void ThrownActor::OnDraw(const DrawContext& context) const
@@ -439,6 +443,33 @@ void ThrownActor::OnDraw(const DrawContext& context) const
 		const float flicker = 0.7f + 0.3f * std::sin(context.time * 40.0f);
 		const float spark[3] = { 1.0f, 0.75f, 0.3f };
 		r->DrawCircle(x + 3.4f, y + height + 7.8f, 2.0f, WithAlpha(spark, 1.0f), 2.2f * flicker);
+		break;
+	}
+
+	case Kind::Light:
+	{
+		// 힐러의 빛 조각 — 짧은 금빛 꼬리를 끄는 낱알
+		const float angle = std::atan2(-m_VY, m_VX);
+		const float c = std::cos(angle);
+		const float s = std::sin(angle);
+		const float gold[3] = { 1.0f, 0.92f, 0.62f };
+		r->DrawSegment(x - c * 12.0f, y - s * 12.0f, x, y, 2.4f, WithAlpha(gold, 0.45f), 0.8f);
+		r->DrawCircle(x, y, 3.2f, WithAlpha(gold, 1.0f), 2.2f);
+		break;
+	}
+
+	case Kind::Fireball:
+	{
+		// 마법사의 불덩이 — 곧게 날아가며 일렁인다
+		const float angle = std::atan2(-m_VY, m_VX);
+		const float c = std::cos(angle);
+		const float s = std::sin(angle);
+		const float flicker = 0.8f + 0.2f * std::sin(context.time * 31.0f);
+		const float outer[3] = { 0.62f, 0.36f, 1.0f };
+		const float inner[3] = { 1.0f, 0.78f, 0.52f };
+		r->DrawCircle(x - c * 9.0f, y - s * 9.0f, 4.0f, WithAlpha(outer, 0.35f), 0.8f, 3.0f);
+		r->DrawCircle(x, y + 2.0f, 7.0f * flicker, WithAlpha(outer, 0.8f), 1.8f, 2.0f);
+		r->DrawCircle(x, y + 2.0f, 3.4f, WithAlpha(inner, 1.0f), 2.6f);
 		break;
 	}
 	}

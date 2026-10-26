@@ -110,7 +110,7 @@ void Game::RecordExplored()
 		{
 			if (TotalBrightness(TileToWorld(tileX), TileToWorld(tileY)) >= kRevealAt)
 			{
-				m_Explored.Mark(tileX, tileY);
+				MarkSeen(tileX, tileY);
 			}
 		}
 	}
@@ -360,6 +360,11 @@ void Game::UpdateRinging(float deltaSeconds, bool holding)
 		m_RingProgress = 0.0f;
 		m_Regions.MarkRung(ringingRegionX, ringingRegionY);
 
+		// 빛이 돌아왔다. 숨어 있던 사람들이 돌아와 저마다의 집에 든다.
+		// 종지기가 선 마을은 지도에도 통째로 밝아진다.
+		PopulateVillage(m_Regions.VillageIndex(ringingRegionX, ringingRegionY));
+		RevealVillage(m_Regions.VillageIndex(ringingRegionX, ringingRegionY));
+
 		// 함께 온 사람이 제 일로 갚는다. 누구였는지는 그 구역이 정해 둔
 		// personSeed가 말해 준다 — 말을 건 사람과 같은 사람이다.
 		if (m_Companion != NULL)
@@ -372,11 +377,7 @@ void Game::UpdateRinging(float deltaSeconds, bool holding)
 			if (isNew)
 			{
 				// 첫 마을로 가서 자리를 잡는다.
-				const Regions::Region home = m_Regions.At(kHomeRegionX, kHomeRegionY);
-				const float angle = RandomRange(0.0f, 6.2831853f);
-				SpawnVillager(TileToWorld(home.towerTileX) + std::cos(angle) * 120.0f,
-				              TileToWorld(home.towerTileY) + std::sin(angle) * 120.0f,
-				              region.personSeed, Profession::Commoner, perkIndex);
+				SpawnVillager(kHomeRegionVillage, Profession::Commoner, perkIndex, region.personSeed);
 
 				m_PerkNotice = 6.0f;
 				m_PerkNoticeIndex = perkIndex;
@@ -419,17 +420,20 @@ void Game::HandleInteraction(float deltaSeconds, const Input& input)
 		m_Player->UseFire();
 	}
 
-	// 상인에게 산 횃불은 그 자리에 세워 두면 꺼지지 않는다
+	// 가방의 물건. 단축칸(1~9)에 걸어 둔 것을 숫자로 쓰고,
+	// 횃불(R)과 회복약(Q)은 단축칸에 걸지 않아도 바로 쓸 수 있다.
+	UseHotkeys();
+
 	const bool placeTorch = input.PlaceTorch();
-	if (placeTorch && !m_PrevTorch && m_Player->UseTorch())
+	if (placeTorch && !m_PrevTorch)
 	{
-		m_Scene.Spawn(std::unique_ptr<Actor>(new TorchActor(m_PlayerX, m_PlayerY + 6.0f)));
+		UseItem(ItemKind::Torch);
 	}
 
 	const bool healPack = input.UseHealPack();
-	if (healPack && !m_PrevHealPack && m_Player->UseHealPack())
+	if (healPack && !m_PrevHealPack)
 	{
-		SpawnFloatingText(m_PlayerX, m_PlayerY - 44.0f, "회복약", -1, kHealRed, 14.0f);
+		UseItem(ItemKind::HealPack);
 	}
 
 	m_PrevInteract = interact;
@@ -475,32 +479,33 @@ void Game::DrawHud(Renderer* renderer)
 		renderer->DrawTriangle(fireX, bottom + 0.5f, 5.0f, 8.0f, Tint(kFlame, shade));
 	}
 
-	// 상인에게 산 것 — 횃불(R)과 회복약(Q). 몇 개 남았는지 숫자로.
-	{
-		const Color dim = { 0.62f, 0.64f, 0.70f, 1.0f };
-		const float torchX = left + 262.0f;
-		renderer->DrawRoundRect(torchX, bottom - 2.0f, 2.6f, 12.0f, 1.0f, Tint(kWoodDark, 1.2f));
-		renderer->DrawTriangle(torchX, bottom + 6.0f, 5.0f, 7.0f, Tint(kFlame), 0.0f, 1.2f);
-		DrawDigits(renderer, std::to_string(Stats().torches), 11.0f, torchX + 6.0f, bottom + 7.0f, dim);
+	// 상인에게 산 것은 가방에 든다. 화면 아래 가운데의 단축칸(1~9)으로 쓴다.
+	DrawHotbar(renderer);
 
-		const float healX = left + 300.0f;
-		renderer->DrawCircle(healX, bottom, 5.0f, Tint(kHealRed));
-		renderer->DrawRoundRect(healX, bottom, 5.0f, 1.8f, 0.8f, Tint(kStone, 2.2f));
-		renderer->DrawRoundRect(healX, bottom, 1.8f, 5.0f, 0.8f, Tint(kStone, 2.2f));
-		DrawDigits(renderer, std::to_string(Stats().healPacks), 11.0f, healX + 8.0f, bottom + 7.0f, dim);
+	// 맡아 든 편지 — 몇 번째 마을로 가는지. 단축칸 오른쪽에.
+	if (m_Letter.carrying)
+	{
+		const float letterX = 232.0f;
+		renderer->DrawRoundRect(letterX, bottom, 14.0f, 10.0f, 1.5f, Tint(kStone, 2.6f));
+		renderer->DrawTriangle(letterX, bottom + 1.5f, 12.0f, 5.0f, Tint(kStone, 1.8f), 3.14159265f);
+		DrawDigits(renderer, std::to_string(m_Letter.to + 1), 11.0f, letterX + 10.0f, bottom + 7.0f,
+		           Tint(kGold, 1.1f));
 	}
 
-	// 동행자의 얼굴. 색이 빠질수록 어둠에 잠식된 것이다.
+	// 동행자의 얼굴. 색이 빠질수록 어둠에 잠식된 것이다. 화톳불 오른쪽, 단축칸 왼쪽에.
 	if (HasCompanion())
 	{
 		const float alive = 1.0f - CompanionDarkness();
-		const float faceX = left + 340.0f;
+		const float faceX = left + 248.0f;
 		renderer->DrawCircle(faceX, bottom + 1.0f, 7.5f, Tint(kCrow, 1.0f, 0.6f));
 		renderer->DrawCircle(faceX, bottom + 1.0f, 5.5f, Blend(kFrozen, kLiving, alive));
 		renderer->DrawEllipse(faceX - 0.8f, bottom + 3.8f, 5.6f, 3.0f, Blend(kFrozen, kHair, alive));
 	}
 
-	if (m_ShowMinimap)
+	DrawPartyHud(renderer);
+
+	// 가방이나 큰 지도가 열려 있으면 미니맵은 쉰다(그 창들이 같은 자리를 덮는다)
+	if (!m_InventoryOpen && !m_BigMap.open)
 	{
 		DrawMinimap(renderer);
 	}
@@ -518,200 +523,23 @@ void Game::DrawHud(Renderer* renderer)
 		DrawPrompts(renderer);
 	}
 
+	DrawItemNote(renderer);
+
+	if (m_InventoryOpen)
+	{
+		DrawInventory(renderer);
+	}
+
 	// 상태 창은 맨 위에. Tab을 누르고 있는 동안만.
 	if (m_ShowStatus)
 	{
 		DrawStatus(renderer);
 	}
-}
 
-void Game::RebuildMinimap(Renderer* renderer)
-{
-	if (m_MapImage == 0)
+	// 큰 지도는 화면을 다 덮는다
+	if (m_BigMap.open)
 	{
-		m_MapImage = renderer->CreateImage(kMapTiles, kMapTiles);
-		m_MapPixels.assign(static_cast<size_t>(kMapTiles) * kMapTiles * 4, 0);
-	}
-
-	// 플레이어를 가운데 두고 사방 48칸을 그린다.
-	m_MapOriginX = FloorToInt(m_PlayerX / kTileSize) - kMapTiles / 2;
-	m_MapOriginY = FloorToInt(m_PlayerY / kTileSize) - kMapTiles / 2;
-
-	for (int row = 0; row < kMapTiles; ++row)
-	{
-		for (int column = 0; column < kMapTiles; ++column)
-		{
-			const int tileX = m_MapOriginX + column;
-			const int tileY = m_MapOriginY + row;
-			unsigned char* pixel = &m_MapPixels[(static_cast<size_t>(row) * kMapTiles + column) * 4];
-
-			// 밝혀 본 적 없는 곳은 지도에도 없다.
-			if (!m_Explored.IsSeen(tileX, tileY))
-			{
-				pixel[0] = pixel[1] = pixel[2] = pixel[3] = 0;
-				continue;
-			}
-
-			const unsigned char tile = m_World.TileAt(tileX, tileY);
-			const float* color = kMapGrass;
-			if (tile == World::kPath)       { color = kMapPath; }
-			else if (tile == World::kPlaza) { color = kMapPlaza; }
-			else if (tile == World::kHouse) { color = kMapHouse; }
-			else if (tile == World::kTree)  { color = kMapTree; }
-			else if (tile == World::kWall)  { color = kMapPlaza; }   // 울타리는 밝은 돌빛 선으로
-			else if (tile == World::kWoods) { color = kMapTree; }
-
-			const float jitter = static_cast<float>((tileX * 31 + tileY * 17) & 3) * 0.012f;
-			pixel[0] = ToByte(color[0] + jitter);
-			pixel[1] = ToByte(color[1] + jitter);
-			pixel[2] = ToByte(color[2] + jitter);
-			pixel[3] = 235;
-		}
-	}
-
-	renderer->UpdateImage(m_MapImage, kMapTiles, kMapTiles, m_MapPixels.data());
-	m_MapVersion = m_Explored.Version();
-	m_MapAge = 0.0f;
-	m_MapReady = true;
-}
-
-void Game::DrawMinimap(Renderer* renderer)
-{
-	renderer->SetTag(DrawTag::Minimap);
-	const int playerTileX = FloorToInt(m_PlayerX / kTileSize);
-	const int playerTileY = FloorToInt(m_PlayerY / kTileSize);
-	const int drift = std::max(std::abs(playerTileX - (m_MapOriginX + kMapTiles / 2)),
-	                           std::abs(playerTileY - (m_MapOriginY + kMapTiles / 2)));
-
-	// 멀리 걸어가 가장자리가 비기 전에, 또는 새로 밝힌 곳이 생겼을 때 다시 그린다.
-	// 새로 밝히는 동안 매 프레임 다시 그리지 않도록 최소 간격을 둔다.
-	if (!m_MapReady || drift > 12 || (m_Explored.Version() != m_MapVersion && m_MapAge >= 0.15f))
-	{
-		RebuildMinimap(renderer);
-	}
-
-	const float half = kMapViewSize * 0.5f;
-	const float centerX = m_WindowWidth * 0.5f - 18.0f - half;
-	const float centerY = m_WindowHeight * 0.5f - 18.0f - half;
-	const float scale = kMapPixelsPerTile / kTileSize;   // 월드 픽셀 → 지도 픽셀
-
-	auto mapX = [&](float worldX) { return centerX + (worldX - m_PlayerX) * scale; };
-	auto mapY = [&](float worldY) { return centerY - (worldY - m_PlayerY) * scale; };
-
-	// ── 틀 ──
-	const Color rim = { kBronze[0], kBronze[1], kBronze[2], 0.45f };
-	const Color backing = { 0.015f, 0.017f, 0.025f, 0.86f };
-	renderer->DrawRoundRect(centerX, centerY, kMapViewSize + 8.0f, kMapViewSize + 8.0f, 8.0f, rim);
-	renderer->DrawRoundRect(centerX, centerY, kMapViewSize + 4.0f, kMapViewSize + 4.0f, 6.0f, backing);
-
-	renderer->SetClip(centerX - half, centerY - half, kMapViewSize, kMapViewSize);
-
-	// ── 밝혀 본 땅 ── 플레이어가 움직이면 이미지가 부드럽게 흘러간다
-	const float imageSize = kMapTiles * kMapPixelsPerTile;
-	renderer->DrawImage(m_MapImage,
-	                    mapX(static_cast<float>(m_MapOriginX * kTileSize)),
-	                    mapY(static_cast<float>(m_MapOriginY * kTileSize)),
-	                    imageSize, imageSize);
-
-	// ── 표식 ── 밝혀 본 곳에 있던 것만 남긴다
-	const int reach = static_cast<int>(half / kMapPixelsPerTile) + 2;
-	const int tileMinX = playerTileX - reach;
-	const int tileMaxX = playerTileX + reach;
-	const int tileMinY = playerTileY - reach;
-	const int tileMaxY = playerTileY + reach;
-
-	m_MapProps.clear();
-	m_World.CollectProps(tileMinX, tileMinY, tileMaxX, tileMaxY, m_MapProps);
-	for (const World::Prop& prop : m_MapProps)
-	{
-		if (!m_Explored.IsSeen(prop.tileX, prop.tileY))
-		{
-			continue;
-		}
-
-		const int marker = (prop.kind == World::kPropSupply) ? kMarkSupply
-		                 : (prop.kind == World::kPropBarrel) ? kMarkBarrel
-		                 : kMarkRubble;
-		DrawMapMarker(renderer, marker, mapX(TileToWorld(prop.tileX)), mapY(TileToWorld(prop.tileY)), 0.0f);
-	}
-
-	m_MapRegions.clear();
-	m_Regions.CollectOverlapping(tileMinX, tileMinY, tileMaxX, tileMaxY, m_MapRegions);
-	for (const Regions::Region& region : m_MapRegions)
-	{
-		// 굳은 사람은 본 적이 있거나 정보상에게 들었을 때만
-		if (!region.woken && (region.heard || m_Explored.IsSeen(region.sleeperTileX, region.sleeperTileY)))
-		{
-			DrawMapMarker(renderer, kMarkSleeper,
-			              mapX(TileToWorld(region.sleeperTileX)), mapY(TileToWorld(region.sleeperTileY)),
-			              region.warmth);
-		}
-
-		// 종탑은 본 적이 있거나, 그 마을 사람에게서 위치를 들었으면 표시한다.
-		if (region.rung || region.woken || region.heard
-		    || m_Explored.IsSeen(region.towerTileX, region.towerTileY))
-		{
-			DrawMapMarker(renderer, region.rung ? kMarkTowerRung : kMarkTowerSilent,
-			              mapX(TileToWorld(region.towerTileX)), mapY(TileToWorld(region.towerTileY)), 0.0f);
-		}
-	}
-
-	// 내려놓은 화톳불. 장면에서 직접 찾는다 — 따로 목록을 들고 있지 않다.
-	m_Scene.ForEach([&](Actor& actor)
-	{
-		if (actor.Name() == "Bonfire" || actor.Name() == "Torch")
-		{
-			DrawMapMarker(renderer, kMarkFire, mapX(actor.WorldX()), mapY(actor.WorldY()), 0.0f);
-		}
-	});
-
-	if (HasCompanion())
-	{
-		DrawMapMarker(renderer, kMarkCompanion, mapX(m_Companion->WorldX()), mapY(m_Companion->WorldY()), 0.0f);
-	}
-
-	// 적. 종탑지기는 따로 크게 표시한다.
-	for (size_t i = 0; i < m_Enemies.size(); ++i)
-	{
-		const EnemyActor* enemy = m_Enemies[i];
-		if (enemy->IsDying())
-		{
-			continue;
-		}
-		DrawMapMarker(renderer, enemy->IsWarden() ? kMarkWarden : kMarkEnemy,
-		              mapX(enemy->WorldX()), mapY(enemy->WorldY()), 0.0f);
-	}
-
-	// 나 — 바라보는 쪽을 가리키는 화살표
-	const Color outline = { 0.01f, 0.01f, 0.02f, 0.95f };
-	const Color me = { 0.97f, 0.92f, 0.80f, 1.0f };
-	const float pointing = -1.5708f * m_Player->Facing();
-	renderer->DrawTriangle(centerX, centerY, 12.0f, 12.0f, outline, pointing);
-	renderer->DrawTriangle(centerX, centerY, 8.0f, 8.5f, me, pointing);
-
-	renderer->ClearClip();
-
-	// ── 범례 ──
-	const float legendTop = centerY - half - 20.0f;
-	const float rowHeight = 17.0f;
-	const Color legendBacking = { 0.015f, 0.017f, 0.025f, 0.72f };
-	const Color legendText = { 0.78f, 0.76f, 0.71f, 1.0f };
-	renderer->DrawRoundRect(centerX, legendTop - rowHeight * 2.0f, kMapViewSize + 8.0f, rowHeight * 5.0f + 10.0f,
-	                        6.0f, legendBacking);
-
-	const int markers[10] = { kMarkTowerSilent, kMarkTowerRung, kMarkSleeper, kMarkCompanion,
-	                          kMarkFire, kMarkSupply, kMarkBarrel, kMarkRubble,
-	                          kMarkWarden, kMarkEnemy };
-	const char* const labels[10] = { "종탑", "울린 종탑", "굳은 사람", "동행자",
-	                                 "화톳불", "보급품", "나무통", "잔해",
-	                                 "종탑지기", "적" };
-
-	for (int i = 0; i < 10; ++i)
-	{
-		const float itemX = centerX - half + 10.0f + (i % 2) * half;
-		const float itemY = legendTop - (i / 2) * rowHeight;
-		DrawMapMarker(renderer, markers[i], itemX, itemY, 0.0f);
-		renderer->DrawLabel(labels[i], 12.0f, itemX + 11.0f, itemY + 8.0f, legendText);
+		DrawBigMap(renderer);
 	}
 }
 
@@ -1173,69 +1001,11 @@ void Game::SettleHomeVillage()
 	m_Regions.MarkRung(kHomeRegionX, kHomeRegionY);
 	m_Regions.MarkWoken(kHomeRegionX, kHomeRegionY);
 
-	const Regions::Region home = m_Regions.At(kHomeRegionX, kHomeRegionY);
-	const float plazaX = TileToWorld(home.towerTileX);
-	const float plazaY = TileToWorld(home.towerTileY);
+	// 마을 사람 스무 명이 저마다의 집에 산다(Villages.cpp)
+	PopulateVillage(kHomeRegionVillage);
 
-	// 마을 사람들. 가게는 광장 둘레에 자리를 잡고, 나머지는 마을 곳곳에 산다.
-	// 집 자리가 곧 그 사람이 꾸밀 구역이다.
-	struct Resident
-	{
-		Profession profession;
-		bool thief;
-		float reachMin;     // 광장에서 이만큼 떨어진 곳에 산다
-		float reachMax;
-	};
-	const Resident residents[] =
-	{
-		{ Profession::Merchant,  false, 140.0f, 190.0f },
-		{ Profession::Doctor,    false, 140.0f, 190.0f },
-		{ Profession::Informant, false, 160.0f, 220.0f },
-		{ Profession::Hunter,    false, 300.0f, 520.0f },
-		{ Profession::Hunter,    false, 300.0f, 520.0f },
-		{ Profession::Guard,     false, 250.0f, 450.0f },
-		{ Profession::Guard,     false, 250.0f, 450.0f },
-		{ Profession::Commoner,  true,  250.0f, 650.0f },   // 좀도둑
-		{ Profession::Commoner,  false, 250.0f, 650.0f },
-		{ Profession::Commoner,  false, 250.0f, 650.0f },
-		{ Profession::Commoner,  false, 250.0f, 650.0f },
-	};
-	const int count = static_cast<int>(sizeof(residents) / sizeof(residents[0]));
-
-	for (int i = 0; i < count; ++i)
-	{
-		const float angle = (6.2831853f * i) / count + RandomRange(-0.3f, 0.3f);
-		const float reach = RandomRange(residents[i].reachMin, residents[i].reachMax);
-		VillagerActor* villager = SpawnVillager(plazaX + std::cos(angle) * reach,
-		                                        plazaY + std::sin(angle) * reach,
-		                                        static_cast<unsigned int>(m_Random()),
-		                                        residents[i].profession, -1);
-		if (residents[i].thief)
-		{
-			villager->MakeThief();
-		}
-	}
-}
-
-VillagerActor* Game::SpawnVillager(float worldX, float worldY, unsigned int look,
-                                   Profession profession, int perkIndex)
-{
-	// 집이나 나무 안에 놓이지 않게 조금씩 밀어 본다.
-	for (int tries = 0; tries < 12; ++tries)
-	{
-		if (!IsBodyBlocked(worldX, worldY, 9.0f))
-		{
-			break;
-		}
-		worldX += RandomRange(-40.0f, 40.0f);
-		worldY += RandomRange(-40.0f, 40.0f);
-	}
-
-	VillagerActor* villager = static_cast<VillagerActor*>(m_Scene.Spawn(std::unique_ptr<Actor>(
-		new VillagerActor(worldX, worldY, look, profession, perkIndex))));
-	const Regions::Region home = m_Regions.At(kHomeRegionX, kHomeRegionY);
-	villager->AttachToGame(this, TileToWorld(home.towerTileX), TileToWorld(home.towerTileY));
-	return villager;
+	// 종지기가 지키는 마을이라 지도에는 처음부터 다 밝혀져 있다
+	RevealVillage(kHomeRegionVillage);
 }
 
 const PlayerCombat& Game::Stats() const
@@ -1708,15 +1478,18 @@ void Game::SpawnOutskirts(float deltaSeconds)
 	}
 	m_OutskirtTimer = 6.5f * RandomRange(0.7f, 1.3f);
 
-	const Regions::Region home = m_Regions.At(kHomeRegionX, kHomeRegionY);
-	const float homeX = TileToWorld(home.towerTileX);
-	const float homeY = TileToWorld(home.towerTileY);
-
-	// 멀리 나가 있으면 마을 사정은 보이지 않는다
-	if (Distance(m_PlayerX, m_PlayerY, homeX, homeY) > 1350.0f)
+	// 플레이어가 서 있는 마을이 사람 사는 마을이어야 한다. 숲길에 있으면 마을 사정은 보이지 않는다.
+	const int village = NearestPopulatedVillage();
+	if (village < 0)
 	{
 		return;
 	}
+	int homeRegionX = 0;
+	int homeRegionY = 0;
+	m_Regions.VillagePosition(village, homeRegionX, homeRegionY);
+	const Regions::Region home = m_Regions.At(homeRegionX, homeRegionY);
+	const float homeX = TileToWorld(home.towerTileX);
+	const float homeY = TileToWorld(home.towerTileY);
 
 	int alive = 0;
 	for (size_t i = 0; i < m_Enemies.size(); ++i)
@@ -1766,8 +1539,9 @@ void Game::SpawnOutskirts(float deltaSeconds)
 			x += across;
 		}
 
-		// 너무 멀면 나타나자마자 사라진다(적은 1500px 밖에서 사라진다)
-		if (Distance(x, y, m_PlayerX, m_PlayerY) > 1300.0f)
+		// 너무 멀면 나타나자마자 사라진다(적은 1500px 밖에서 사라진다).
+		// 마을이 넓어 문 근처에 있을 때만 외곽의 소란이 보인다.
+		if (Distance(x, y, m_PlayerX, m_PlayerY) > 1400.0f)
 		{
 			continue;
 		}
@@ -1843,6 +1617,7 @@ void Game::RespawnPlayer()
 	{
 		m_Companion->SetPosition(bestX - 24.0f, bestY);
 	}
+	PlaceParty(bestX, bestY);
 
 	PlayerCombat& stats = m_Player->Combat();
 	stats.health = m_Player->MaxHealth();
@@ -1864,12 +1639,64 @@ void Game::RespawnPlayer()
 //  한 프레임
 // ═══════════════════════════════════════════════════════════════════
 
+//
+// 키와 마우스는 "눌려 있는가"만 알려 준다. 가방을 열고 닫거나 단축칸을 쓰는 일은
+// "방금 눌렀는가"로 해야 한 번 누름에 한 번만 일어난다. 그래서 프레임 처음에
+// 한 번, 지난 프레임과 비교해 새로 눌린 것을 적어 둔다.
+//
+void Game::TrackInput(const Input& input)
+{
+	for (int key = 0; key < 256; ++key)
+	{
+		const bool down = input.IsPressed(static_cast<unsigned char>(key));
+		m_KeyEdge[key] = down && !m_KeyHeld[key];
+		m_KeyHeld[key] = down;
+	}
+
+	m_MouseX = input.MouseX();
+	m_MouseY = input.MouseY();
+	for (int button = 0; button < 2; ++button)
+	{
+		const bool down = input.MouseDown(button);
+		m_MousePressed[button] = down && !m_MouseHeld[button];
+		m_MouseReleased[button] = !down && m_MouseHeld[button];
+		m_MouseHeld[button] = down;
+	}
+
+	m_WheelDelta = input.WheelTotal() - m_WheelSeen;
+	m_WheelSeen = input.WheelTotal();
+}
+
+bool Game::CloseOverlay()
+{
+	if (m_BigMap.open)
+	{
+		m_BigMap.open = false;
+		m_BigMap.dragging = false;
+		return true;
+	}
+	if (m_InventoryOpen)
+	{
+		m_InventoryOpen = false;
+		m_Drag = DragState();
+		return true;
+	}
+	if (m_Trade.active)
+	{
+		m_Trade.active = false;
+		return true;
+	}
+	return false;
+}
+
 void Game::Update(float deltaSeconds, const Input& input)
 {
+	TrackInput(input);
 	m_ShowStatus = input.HoldingStatus();
 
 	m_Time += deltaSeconds;
-	m_MapAge += deltaSeconds;
+	m_MapUploadAge += deltaSeconds;
+	m_ItemNoteTime = std::max(0.0f, m_ItemNoteTime - deltaSeconds);
 
 	m_PlayerX = m_Player->WorldX();
 	m_PlayerY = m_Player->WorldY();
@@ -1888,6 +1715,48 @@ void Game::Update(float deltaSeconds, const Input& input)
 	{
 		m_Trade.replyTime = std::max(0.0f, m_Trade.replyTime - deltaSeconds);
 		UpdateTrade(input);
+		BuildLights();
+		return;
+	}
+
+	// 큰 지도(M)와 가방(I). 하나를 열면 다른 하나는 닫힌다.
+	if (KeyPressed('m'))
+	{
+		m_BigMap.open = !m_BigMap.open;
+		m_BigMap.dragging = false;
+		if (m_BigMap.open)
+		{
+			m_InventoryOpen = false;
+			m_Drag = DragState();
+			m_BigMap.centerX = m_PlayerX;   // 열 때마다 내가 선 곳에서 시작한다
+			m_BigMap.centerY = m_PlayerY;
+		}
+	}
+	if (KeyPressed('i'))
+	{
+		m_InventoryOpen = !m_InventoryOpen;
+		m_Drag = DragState();
+		if (m_InventoryOpen)
+		{
+			m_BigMap.open = false;
+		}
+	}
+
+	// 지도와 가방을 보는 동안에도 세계는 멈춘다. 끌어다 놓는 동안 맞으면 억울하다.
+	if (m_BigMap.open || m_InventoryOpen)
+	{
+		if (m_BigMap.open)
+		{
+			UpdateBigMap();
+		}
+		else
+		{
+			UpdateInventory();
+		}
+		m_PrevInteract = input.Interact();
+		m_PrevPlaceFire = input.PlaceFire();
+		m_PrevTorch = input.PlaceTorch();
+		m_PrevHealPack = input.UseHealPack();
 		BuildLights();
 		return;
 	}
@@ -1919,6 +1788,8 @@ void Game::Update(float deltaSeconds, const Input& input)
 
 	HandleInteraction(deltaSeconds, input);
 	UpdateSpawning(deltaSeconds);
+	UpdateVillages(deltaSeconds);
+	UpdateParty();
 	m_PerkNotice = std::max(0.0f, m_PerkNotice - deltaSeconds);
 
 	m_Light.Decay(deltaSeconds);

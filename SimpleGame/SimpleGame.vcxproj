@@ -162,6 +162,7 @@
     <ClInclude Include="Dialogue.h" />
     <ClInclude Include="ExploredMap.h" />
     <ClInclude Include="Game.h" />
+    <ClInclude Include="Items.h" />
     <ClInclude Include="Input.h" />
     <ClInclude Include="LightGrid.h" />
     <ClInclude Include="Actor.h" />
@@ -210,6 +211,11 @@
     <ClCompile Include="Status.cpp" />
     <ClCompile Include="StatusPanel.cpp" />
     <ClCompile Include="Trade.cpp" />
+    <ClCompile Include="Villages.cpp" />
+    <ClCompile Include="Items.cpp" />
+    <ClCompile Include="InventoryUI.cpp" />
+    <ClCompile Include="MapView.cpp" />
+    <ClCompile Include="Party.cpp" />
     <ClCompile Include="Profiler.cpp" />
     <ClCompile Include="Progression.cpp" />
     <ClCompile Include="Regions.cpp" />

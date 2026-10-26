@@ -200,6 +200,7 @@ namespace Art
 	extern const int kMarkRubble      = 7;
 	extern const int kMarkWarden      = 8;
 	extern const int kMarkEnemy       = 9;
+	extern const int kMarkParty       = 10;
 
 	Color Tint(const float c[3], float shade, float alpha)
 	{
@@ -924,9 +925,74 @@ namespace Art
 			r->DrawCircle(x, y, 1.9f, Tint(kEyeRed));
 			break;
 
+		case kMarkParty:
+		{
+			const Color green = { 0.46f, 0.86f, 0.56f, 1.0f };
+			r->DrawRoundRect(x, y, 6.6f, 6.6f, 1.6f, outline, 0.7854f);
+			r->DrawRoundRect(x, y, 4.6f, 4.6f, 1.0f, green, 0.7854f);
+			break;
+		}
+
 		default:   // kMarkRubble
 			r->DrawRoundRect(x, y, 5.4f, 5.4f, 0.6f, outline, 0.3f);
 			r->DrawRoundRect(x, y, 3.8f, 3.8f, 0.4f, Tint(kMapRubble), 0.3f);
+			break;
+		}
+	}
+
+	void DrawItemIcon(Renderer* r, ItemKind kind, float x, float y, float size, float alpha)
+	{
+		const float s = size;
+		switch (kind)
+		{
+		case ItemKind::HealPack:
+		{
+			// 붉은 병 위의 흰 십자
+			const Color glass = Tint(kHealRed, 1.1f, alpha);
+			const Color white = { 0.95f, 0.93f, 0.90f, alpha };
+			r->DrawRoundRect(x, y + s * 0.30f, s * 0.20f, s * 0.16f, s * 0.04f, Tint(kWood, 1.2f, alpha));
+			r->DrawRoundRect(x, y + s * 0.20f, s * 0.16f, s * 0.12f, s * 0.03f, glass);
+			r->DrawCircle(x, y - s * 0.08f, s * 0.32f, glass);
+			r->DrawRoundRect(x, y - s * 0.08f, s * 0.30f, s * 0.09f, s * 0.04f, white);
+			r->DrawRoundRect(x, y - s * 0.08f, s * 0.09f, s * 0.30f, s * 0.04f, white);
+			break;
+		}
+
+		case ItemKind::Torch:
+		{
+			// 비스듬한 자루 끝에 불꽃
+			r->DrawSegment(x - s * 0.16f, y - s * 0.38f, x + s * 0.06f, y + s * 0.14f, s * 0.11f, Tint(kWoodDark, 1.3f, alpha));
+			r->DrawRoundRect(x + s * 0.06f, y + s * 0.12f, s * 0.18f, s * 0.08f, s * 0.03f, Tint(kMetal, 1.0f, alpha), -0.4f);
+			r->DrawTriangle(x + s * 0.09f, y + s * 0.30f, s * 0.30f, s * 0.36f, Tint(kEmber, 1.0f, alpha), -0.35f);
+			r->DrawTriangle(x + s * 0.08f, y + s * 0.27f, s * 0.16f, s * 0.22f, Tint(kFlameCore, 1.0f, alpha), -0.35f);
+			break;
+		}
+
+		case ItemKind::Oil:
+		{
+			// 호박빛 기름이 찰랑이는 병과 코르크
+			const Color glass = { 0.62f, 0.66f, 0.70f, 0.55f * alpha };
+			const Color oil = { 0.92f, 0.62f, 0.18f, alpha };
+			r->DrawRoundRect(x, y - s * 0.06f, s * 0.44f, s * 0.52f, s * 0.12f, glass);
+			r->DrawRoundRect(x, y - s * 0.14f, s * 0.38f, s * 0.32f, s * 0.10f, oil);
+			r->DrawRoundRect(x, y + s * 0.26f, s * 0.16f, s * 0.14f, s * 0.03f, glass);
+			r->DrawRoundRect(x, y + s * 0.36f, s * 0.18f, s * 0.08f, s * 0.03f, Tint(kWood, 1.3f, alpha));
+			r->DrawRoundRect(x - s * 0.10f, y - s * 0.02f, s * 0.05f, s * 0.20f, s * 0.02f, Color{ 1.0f, 0.95f, 0.8f, 0.6f * alpha });
+			break;
+		}
+
+		case ItemKind::WeaponStone:
+		{
+			// 금빛 무리 속의 짧은 칼(떨어진 강화석과 같은 그림)
+			const Color halo = { kGold[0], kGold[1], kGold[2], 0.22f * alpha };
+			r->DrawCircle(x, y, s * 0.42f, halo, 0.0f, s * 0.12f);
+			r->DrawSegment(x - s * 0.16f, y - s * 0.20f, x + s * 0.22f, y + s * 0.24f, s * 0.11f, Tint(kSteel, 1.1f, alpha));
+			r->DrawSegment(x - s * 0.25f, y - s * 0.02f, x - s * 0.02f, y - s * 0.27f, s * 0.09f, Tint(kGold, 1.0f, alpha));
+			r->DrawSegment(x - s * 0.16f, y - s * 0.20f, x - s * 0.28f, y - s * 0.32f, s * 0.10f, Tint(kWood, 1.1f, alpha));
+			break;
+		}
+
+		default:
 			break;
 		}
 	}

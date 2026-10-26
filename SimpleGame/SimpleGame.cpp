@@ -220,9 +220,56 @@ void Idle(void)
 	glutPostRedisplay();
 }
 
+// 창 픽셀(왼쪽 위가 원점, y 아래) → HUD 좌표(가운데가 원점, y 위).
+// 창을 늘려도 게임은 960x640 논리 화면으로 그려지므로 창 크기로 나눠 맞춘다.
+void ToHudCoordinates(int x, int y, float& outX, float& outY)
+{
+	const int width = glutGet(GLUT_WINDOW_WIDTH);
+	const int height = glutGet(GLUT_WINDOW_HEIGHT);
+	const float scaleX = (width > 0) ? static_cast<float>(WINDOW_WIDTH) / width : 1.0f;
+	const float scaleY = (height > 0) ? static_cast<float>(WINDOW_HEIGHT) / height : 1.0f;
+	outX = x * scaleX - WINDOW_WIDTH * 0.5f;
+	outY = WINDOW_HEIGHT * 0.5f - y * scaleY;
+}
+
 void MouseInput(int button, int state, int x, int y)
 {
+	float hudX = 0.0f;
+	float hudY = 0.0f;
+	ToHudCoordinates(x, y, hudX, hudY);
+
+	// freeglut(Windows)는 휠을 3 · 4번 단추로 알려 준다. macOS는 PhysicalKeyboard가 받는다.
+	if (button == 3 || button == 4)
+	{
+		if (state == GLUT_DOWN)
+		{
+			g_Input.OnWheel(button == 3 ? 1.0f : -1.0f);
+		}
+		return;
+	}
+
+	const int which = (button == GLUT_LEFT_BUTTON) ? Input::kMouseLeft
+	                : (button == GLUT_RIGHT_BUTTON) ? Input::kMouseRight : -1;
+	if (which >= 0)
+	{
+		g_Input.OnMouseButton(which, state == GLUT_DOWN, hudX, hudY);
+	}
 }
+
+void MouseMotion(int x, int y)
+{
+	float hudX = 0.0f;
+	float hudY = 0.0f;
+	ToHudCoordinates(x, y, hudX, hudY);
+	g_Input.OnMouseMove(hudX, hudY);
+}
+
+#if defined(__APPLE__)
+void ScrollInput(float amount)
+{
+	g_Input.OnWheel(amount);
+}
+#endif
 
 void KeyInput(unsigned char key, int x, int y)
 {
@@ -232,8 +279,12 @@ void KeyInput(unsigned char key, int x, int y)
 		return;
 	}
 
-	if (key == 27)  // ESC
+	if (key == 27)  // ESC — 열린 창(지도 · 가방 · 거래)이 있으면 그것부터 닫는다
 	{
+		if (g_Game.CloseOverlay())
+		{
+			return;
+		}
 		exit(0);
 	}
 
@@ -242,12 +293,6 @@ void KeyInput(unsigned char key, int x, int y)
 	{
 		g_Post.SetEnabled(!g_Post.IsEnabled());
 		std::cout << "후처리 " << (g_Post.IsEnabled() ? "켜짐" : "꺼짐") << "\n";
-		return;
-	}
-	if (key == 'm' || key == 'M')
-	{
-		g_Game.ToggleMinimap();
-		std::cout << "미니맵 " << (g_Game.IsMinimapVisible() ? "켜짐" : "꺼짐") << "\n";
 		return;
 	}
 	// 모아 그리기 전후를 바로 비교할 수 있게 한다.
@@ -374,7 +419,7 @@ int main(int argc, char **argv)
 	g_Renderer->SetBatching(g_StartBatching);
 	g_Profiler.SetLogPath(g_PerfLogPath);
 	std::cout << "성능 기록: " << g_PerfLogPath
-	          << "   (B = 모아 그리기 켜고 끄기, P = 후처리, M = 미니맵)\n";
+	          << "   (B = 모아 그리기 켜고 끄기, P = 후처리)\n";
 	std::atexit(PrintSessionSummary);
 
 	if (g_MonitorPort > 0 && g_Monitor.Start(g_MonitorPort, "./Monitor"))
@@ -408,13 +453,15 @@ int main(int argc, char **argv)
 		<< "   F               불씨를 쏜다 — 가까운 적을 저절로 노린다 (누르고 있으면 연사)\n"
 		<< "   Space           말을 건다 · 대사 넘기기 · 종을 당긴다(누르고 있을 것)\n"
 		<< "   E               화톳불을 내려놓는다 (3개)\n"
+		<< "   1~9             단축칸의 물건을 쓴다\n"
+		<< "   I               가방 · 파티 (끌어다 단축칸에 놓기, 우클릭으로 쓰기)\n"
+		<< "   M               큰 지도 (끌어서 옮기기, 휠 · +/- 로 확대)\n"
 		<< "   Tab             누르고 있는 동안 상태 창 (공격력 · 스킬 · 되찾은 사람들)\n"
-		<< "   M               미니맵 켜기/끄기\n"
 		<< "   G               어둠 위의 연무 켜기/끄기\n"
 		<< "   B               모아 그리기 켜기/끄기 (성능 비교)\n"
 		<< "   P               후처리 켜기/끄기 (전후 비교)\n"
 		<< "   T               톤 매핑 전환 (어깨 곡선 / ACES)\n"
-		<< "   ESC             끝낸다\n"
+		<< "   ESC             열린 창을 닫는다 · 없으면 끝낸다\n"
 		<< "\n  ── 한 바퀴 ──────────────────────────────\n"
 		<< "   1. 연기 너머로 종탑과 굳은 사람이 희미하게 보인다.\n"
 		<< "      까마귀가 앉아 있으면 아직 침묵한 종탑이다.\n"
@@ -456,6 +503,11 @@ int main(int argc, char **argv)
 	glutSpecialFunc(SpecialKeyInput);
 	glutSpecialUpFunc(SpecialKeyUpInput);
 	glutMouseFunc(MouseInput);
+	glutMotionFunc(MouseMotion);          // 단추를 누른 채 움직일 때(끌기)
+	glutPassiveMotionFunc(MouseMotion);   // 그냥 움직일 때(가리키기)
+#if defined(__APPLE__)
+	InstallScrollWheel(ScrollInput);
+#endif
 
 	g_PreviousTimeMs = glutGet(GLUT_ELAPSED_TIME);
 

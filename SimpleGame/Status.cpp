@@ -59,8 +59,11 @@ std::string Game::BuildStatusJson(float fps) const
 		    << ",\"soulsNeeded\":" << Json::Number(Progression::SoulsToNextLevel(stats.level))
 		    << ",\"weaponTier\":" << Json::Number(stats.weaponTier)
 		    << ",\"gold\":" << Json::Number(stats.gold)
-		    << ",\"torches\":" << Json::Number(stats.torches)
-		    << ",\"healPacks\":" << Json::Number(stats.healPacks)
+		    << ",\"torches\":" << Json::Number(m_Inventory.Count(ItemKind::Torch))
+		    << ",\"healPacks\":" << Json::Number(m_Inventory.Count(ItemKind::HealPack))
+		    << ",\"oilFlasks\":" << Json::Number(m_Inventory.Count(ItemKind::Oil))
+		    << ",\"weaponStones\":" << Json::Number(m_Inventory.Count(ItemKind::WeaponStone))
+		    << ",\"party\":" << Json::Number(static_cast<int>(m_Party.size()))
 		    << ",\"oil\":" << Json::Number(m_Player->Oil())
 		    << ",\"x\":" << Json::Number(m_PlayerX)
 		    << ",\"y\":" << Json::Number(m_PlayerY)
@@ -134,6 +137,12 @@ std::string Game::BuildStatusJson(float fps) const
 			    << ",\"stolen\":" << Json::Number(villager->Stolen())
 			    << ",\"quarrel\":" << Json::Bool(villager->InQuarrel())
 			    << ",\"quarry\":" << Json::Number(villager->Quarry())
+			    << ",\"village\":" << Json::Number(villager->Village())
+			    << ",\"trip\":" << Json::Number(villager->Trip())
+			    << ",\"escort\":" << Json::Bool(villager->IsEscort())
+			    << ",\"wantsMove\":" << Json::Number(villager->WantsToMove())
+			    << ",\"hired\":" << Json::Bool(villager->IsHired())
+			    << ",\"hiredUntil\":" << Json::Number(villager->HiredUntil())
 			    << ",\"activity\":" << Json::Quote(villager->Activity())
 			    << ",\"health\":" << Json::Number(villager->Health())
 			    << ",\"maxHealth\":" << Json::Number(villager->MaxHealth())
@@ -241,6 +250,55 @@ std::string Game::BuildStatusJson(float fps) const
 		}
 	}
 	out << "]";
+
+	// ── 사람 사는 마을들의 살림 ──
+	out << ",\"lives\":[";
+	{
+		bool first = true;
+		for (auto it = m_Lives.begin(); it != m_Lives.end(); ++it)
+		{
+			if (!it->second.populated)
+			{
+				continue;
+			}
+			if (!first)
+			{
+				out << ",";
+			}
+			first = false;
+			out << "{\"village\":" << Json::Number(it->first)
+			    << ",\"residents\":" << Json::Number(it->second.residents)
+			    << ",\"prosperity\":" << Json::Number(it->second.prosperity)
+			    << ",\"danger\":" << Json::Number(it->second.danger)
+			    << ",\"thefts\":" << Json::Number(it->second.thefts)
+			    << ",\"rumors\":" << Json::Number(static_cast<int>(it->second.rumors.size()))
+			    << ",\"mailNext\":" << Json::Number(it->second.mailTimer)
+			    << "}";
+		}
+	}
+	out << "]";
+
+	// ── 숲길을 건너는 일행 ──
+	out << ",\"trips\":[";
+	for (size_t i = 0; i < m_Trips.size(); ++i)
+	{
+		const Trip& trip = m_Trips[i];
+		if (i > 0)
+		{
+			out << ",";
+		}
+		out << "{\"from\":" << Json::Number(trip.from)
+		    << ",\"to\":" << Json::Number(trip.to)
+		    << ",\"phase\":" << Json::Quote(trip.phase == 0 ? "모이는 중" : (trip.returning ? "돌아가는 중" : "건너는 중"))
+		    << ",\"passengers\":" << Json::Number(static_cast<int>(trip.passengers.size()))
+		    << ",\"escorts\":" << Json::Number(static_cast<int>(trip.escorts.size()))
+		    << ",\"mail\":" << Json::Bool(trip.mail)
+		    << "}";
+	}
+	out << "]";
+
+	out << ",\"letter\":{\"carrying\":" << Json::Bool(m_Letter.carrying)
+	    << ",\"to\":" << Json::Number(m_Letter.to) << "}";
 
 	// ── 얻은 특성 ──
 	out << ",\"perks\":[";

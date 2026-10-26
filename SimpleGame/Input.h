@@ -35,7 +35,7 @@ public:
 	bool PlaceTorch() const { return m_Ascii['r']; }     // 횃불을 그 자리에 세운다
 	bool UseHealPack() const { return m_Ascii['q']; }    // 회복약을 마신다
 
-	// 거래 창에서 고르는 숫자(1~4)
+	// 숫자 키 — 거래 창에서는 살 것을, 평소에는 단축칸을 고른다
 	bool Choice(int number) const
 	{
 		return number >= 1 && number <= 9 && m_Ascii['0' + number];
@@ -43,7 +43,31 @@ public:
 
 	bool IsPressed(unsigned char key) const;
 
+	// ── 마우스 ──
+	// 좌표는 HUD와 같은 렌더러 좌표계다(화면 가운데가 원점, y가 위). 창 픽셀을
+	// 바꾸는 일은 GLUT 콜백(SimpleGame.cpp)이 창 크기를 보고 한다.
+	enum MouseButton { kMouseLeft = 0, kMouseRight = 1, kMouseButtons = 2 };
+
+	void OnMouseButton(int button, bool down, float x, float y);
+	void OnMouseMove(float x, float y);
+	void OnWheel(float amount);   // 위로 굴리면 +
+
+	float MouseX() const { return m_MouseX; }
+	float MouseY() const { return m_MouseY; }
+	bool MouseDown(int button) const
+	{
+		return button >= 0 && button < kMouseButtons && m_MouseDown[button];
+	}
+	// 지금까지 굴린 양의 합. 읽는 쪽이 지난번 값과의 차이를 쓴다
+	// (Game은 const Input만 받으므로 여기서 비울 수 없다).
+	float WheelTotal() const { return m_Wheel; }
+
 private:
 	bool m_Ascii[256] = { false };
 	bool m_Special[256] = { false };
+
+	float m_MouseX = 0.0f;
+	float m_MouseY = 0.0f;
+	bool m_MouseDown[kMouseButtons] = { false, false };
+	float m_Wheel = 0.0f;
 };

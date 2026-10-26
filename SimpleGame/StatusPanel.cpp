@@ -158,11 +158,20 @@ void Game::DrawStatus(Renderer* renderer)
 		x += DrawDigits(renderer, Format("%d", stats.gold), 14.0f, x, y, Tint(kGold, 1.1f)) + 4.0f;
 		x += renderer->DrawLabel("골드", 11.0f, x, y - 2.0f, kLabel) + 22.0f;
 		x += renderer->DrawLabel("횃불", 12.0f, x, y - 1.0f, kLabel) + 4.0f;
-		x += DrawDigits(renderer, Format("%d", stats.torches), 14.0f, x, y, kValue) + 4.0f;
+		x += DrawDigits(renderer, Format("%d", m_Inventory.Count(ItemKind::Torch)), 14.0f, x, y, kValue) + 4.0f;
 		x += renderer->DrawLabel("R", 11.0f, x, y - 2.0f, kBonus) + 18.0f;
 		x += renderer->DrawLabel("회복약", 12.0f, x, y - 1.0f, kLabel) + 4.0f;
-		x += DrawDigits(renderer, Format("%d", stats.healPacks), 14.0f, x, y, kValue) + 4.0f;
-		renderer->DrawLabel("Q", 11.0f, x, y - 2.0f, kBonus);
+		x += DrawDigits(renderer, Format("%d", m_Inventory.Count(ItemKind::HealPack)), 14.0f, x, y, kValue) + 4.0f;
+		x += renderer->DrawLabel("Q", 11.0f, x, y - 2.0f, kBonus) + 18.0f;
+		x += renderer->DrawLabel("파티", 12.0f, x, y - 1.0f, kLabel) + 4.0f;
+		x += DrawDigits(renderer, Format("%d", static_cast<int>(m_Party.size())) + "/" + Format("%d", kMaxParty),
+		                14.0f, x, y, kValue) + 18.0f;
+		if (m_Letter.carrying)
+		{
+			x += renderer->DrawLabel("편지", 12.0f, x, y - 1.0f, kLabel) + 4.0f;
+			x += DrawDigits(renderer, Format("%d", m_Letter.to + 1), 14.0f, x, y, kBonus) + 2.0f;
+			renderer->DrawLabel("번째 마을로", 11.0f, x, y - 2.0f, kLabel);
+		}
 	}
 	y -= 26.0f;
 	rule(y + 6.0f);

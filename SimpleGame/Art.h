@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Combat.h"
+#include "Items.h"
 #include "Professions.h"
 #include "Regions.h"
 #include "Renderer.h"
@@ -130,6 +131,7 @@ namespace Art
 	extern const int kMarkRubble;
 	extern const int kMarkWarden;
 	extern const int kMarkEnemy;
+	extern const int kMarkParty;
 
 	// ── 셈 도우미 ──
 	float Mix(float a, float b, float t);
@@ -179,6 +181,9 @@ namespace Art
 	// 깊은 숲 한 칸의 수관. 나무 액터 대신 땅이 그린다.
 	void DrawCanopy(Renderer* r, float x, float y, int tileX, int tileY, float shade, float warmth);
 	void DrawMapMarker(Renderer* r, int marker, float x, float y, float warmth);
+
+	// 가방과 단축칸의 그림. (x, y)는 칸 한가운데, size는 칸에 들어갈 크기.
+	void DrawItemIcon(Renderer* r, ItemKind kind, float x, float y, float size, float alpha = 1.0f);
 
 	// ── 놓인 것들 ──
 	void DrawTower(Renderer* r, float x, float y, const Regions::Region& region,

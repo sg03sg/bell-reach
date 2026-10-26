@@ -160,6 +160,55 @@ void EnemyActor::OnUpdate(const ActorContext& context)
 	// ── 어디로 갈 것인가 ──
 	float targetX = playerX;
 	float targetY = playerY;
+
+	// 숲길을 지나는 마을 사람도 노린다. 플레이어보다 가까우면 그쪽으로 간다.
+	// 빛 안에 있는 사람은 건드리지 못한다 — 어둠은 빛에 들어오지 못하니까.
+	// 종탑지기는 종탑만 지킨다.
+	VillagerActor* prey = NULL;
+
+	// 방패병이 도발했으면 그 사람만 본다. 빛 안에 서 있어도 쫓아간다(빛 가장자리에서 멈출 뿐).
+	if (!warden && m_TauntTimer > 0.0f)
+	{
+		m_TauntTimer -= deltaSeconds;
+		VillagerActor* taunter = context.game->FindVillager(m_TauntBy);
+		if (taunter != NULL && Distance(WorldX(), WorldY(), taunter->WorldX(), taunter->WorldY()) < 600.0f)
+		{
+			prey = taunter;
+			targetX = prey->WorldX();
+			targetY = prey->WorldY();
+			m_Facing = (targetX >= WorldX()) ? 1.0f : -1.0f;
+		}
+		else
+		{
+			m_TauntTimer = 0.0f;
+		}
+	}
+
+	if (!warden && prey == NULL)
+	{
+		float nearest = std::min(toPlayer, 300.0f);
+		const std::vector<VillagerActor*>& villagers = context.game->Villagers();
+		for (size_t i = 0; i < villagers.size(); ++i)
+		{
+			VillagerActor* villager = villagers[i];
+			if (villager->IsDead())
+			{
+				continue;
+			}
+			const float distance = Distance(WorldX(), WorldY(), villager->WorldX(), villager->WorldY());
+			if (distance < nearest && context.game->BeaconBrightness(villager->WorldX(), villager->WorldY()) <= 0.0f)
+			{
+				nearest = distance;
+				prey = villager;
+			}
+		}
+		if (prey != NULL)
+		{
+			targetX = prey->WorldX();
+			targetY = prey->WorldY();
+			m_Facing = (targetX >= WorldX()) ? 1.0f : -1.0f;
+		}
+	}
 	if (warden && !m_Data.engaged)
 	{
 		// 종탑 앞을 천천히 서성인다
@@ -234,11 +283,20 @@ void EnemyActor::OnUpdate(const ActorContext& context)
 	SetPosition(x, y);
 
 	// ── 붙으면 할퀸다 ──
-	if ((!warden || m_Data.engaged) && m_Data.touchTimer <= 0.0f
+	const float touchDamage = type.touchDamage * (1.0f + 0.5f * (m_Data.power - 1.0f));
+	if (prey != NULL)
+	{
+		if (m_Data.touchTimer <= 0.0f
+		 && Distance(WorldX(), WorldY(), prey->WorldX(), prey->WorldY()) < type.radius + prey->Radius())
+		{
+			prey->TakeMonsterHit(context, touchDamage);
+			m_Data.touchTimer = type.touchCooldown;
+		}
+	}
+	else if ((!warden || m_Data.engaged) && m_Data.touchTimer <= 0.0f
 	 && Distance(WorldX(), WorldY(), playerX, playerY) < type.radius + kPlayerRadius)
 	{
-		player->TakeDamage(context, type.touchDamage * (1.0f + 0.5f * (m_Data.power - 1.0f)),
-		                   WorldX(), WorldY());
+		player->TakeDamage(context, touchDamage, WorldX(), WorldY());
 		m_Data.touchTimer = type.touchCooldown;
 	}
 
@@ -491,7 +549,7 @@ void ProjectileActor::OnUpdate(const ActorContext& context)
 		for (size_t i = 0; i < villagers.size(); ++i)
 		{
 			VillagerActor* villager = villagers[i];
-			if (villager->IsDead())
+			if (villager->IsDead() || villager->IsHired())   // 함께 다니는 사람은 불씨가 비켜 간다
 			{
 				continue;
 			}
